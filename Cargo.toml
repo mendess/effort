@@ -1,0 +1,15 @@
+[package]
+name = "wtime"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.45"
+crossterm = "0.22.1"
+csv = "1.1.6"
+lazy_static = "1.4.0"
+serde = { version = "1.0.130", features = ["derive"] }
+time = { version = "0.3.5", features = ["local-offset", "formatting", "serde", "macros", "parsing", "serde-human-readable"] }
+tui = { version = "0.15", features = ["crossterm"] }
