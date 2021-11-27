@@ -24,8 +24,11 @@ impl ActivityVec {
         } else {
             None
         };
-        self.v.push(t);
-        self.v.sort();
+        let i = match self.v.binary_search(&t) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+        self.v.insert(i, t);
         prev
     }
 
