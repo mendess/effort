@@ -1,20 +1,26 @@
-use std::{fs::File, io::{self, BufReader, BufWriter, Write}, path::Path};
+use std::{
+    fs::File,
+    io::{self, BufReader, BufWriter, Write},
+    path::Path,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use time::{
     format_description::FormatItem, macros::format_description, Date, Month, OffsetDateTime, Time,
 };
+use uuid::Uuid;
 
 pub const TIME_FMT: &[FormatItem<'static>] = format_description!("[hour]:[minute]");
 pub const DATE_FMT: &[FormatItem<'static>] = format_description!("[day]/[month]/[year]");
 
 #[derive(Debug, Clone)]
 pub struct ActivityBeingBuilt {
-    pub action: String,
-    pub start_time: String,
-    pub end_time: String,
-    pub day: String,
-    pub selected: Selected,
+    id: Uuid,
+    action: String,
+    start_time: String,
+    end_time: String,
+    day: String,
+    selected: Selected,
     pub editing: bool,
 }
 
@@ -49,6 +55,7 @@ impl Selected {
 impl Default for ActivityBeingBuilt {
     fn default() -> Self {
         Self {
+            id: Uuid::default(),
             action: String::new(),
             start_time: String::default(),
             end_time: String::new(),
@@ -76,24 +83,54 @@ impl ActivityBeingBuilt {
             Selected::Day => &mut self.day,
         }
     }
+}
 
-    pub fn to_activity(&self) -> Result<Activity, &'static str> {
-        if self.action.is_empty() {
+impl From<&Activity> for ActivityBeingBuilt {
+    fn from(a: &Activity) -> Self {
+        Self {
+            id: a.id,
+            action: a.action.clone(),
+            start_time: a.start_time.format(TIME_FMT).unwrap(),
+            end_time: a
+                .end_time
+                .map(|t| t.format(TIME_FMT).unwrap())
+                .unwrap_or_default(),
+            day: a.day.format(DATE_FMT).unwrap(),
+            selected: Selected::Action,
+            editing: true,
+        }
+    }
+}
+
+impl TryFrom<&ActivityBeingBuilt> for Activity {
+    type Error = &'static str;
+
+    fn try_from(builder: &ActivityBeingBuilt) -> Result<Self, Self::Error> {
+        if builder.action.is_empty() {
             return Err("action field is mandatory");
         }
-        if self.start_time.is_empty() {
+        if builder.start_time.is_empty() {
             return Err("start time required");
         }
         Ok(Activity {
-            start_time: parse_time(&self.start_time)?,
-            end_time: if self.end_time.is_empty() {
+            id: builder.id,
+            start_time: parse_time(&builder.start_time)?,
+            end_time: if builder.end_time.is_empty() {
                 None
             } else {
-                Some(parse_time(&self.end_time)?)
+                Some(parse_time(&builder.end_time)?)
             },
-            day: parse_day(&self.day)?,
-            action: self.action.clone(),
+            day: parse_day(&builder.day)?,
+            action: builder.action.clone(),
         })
+    }
+}
+
+impl TryFrom<&mut ActivityBeingBuilt> for Activity {
+    type Error = &'static str;
+
+    fn try_from(builder: &mut ActivityBeingBuilt) -> Result<Self, Self::Error> {
+        Activity::try_from(&*builder)
     }
 }
 
@@ -161,12 +198,22 @@ fn parse_day(s: &str) -> Result<Date, &'static str> {
     Ok(today)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Activity {
+    #[serde(skip_serializing)]
+    #[serde(deserialize_with = "random_uuid")]
+    pub id: Uuid,
     pub day: Date,
     pub start_time: Time,
     pub end_time: Option<Time>,
     pub action: String,
+}
+
+fn random_uuid<'de, D>(_: D) -> Result<Uuid, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Uuid::default())
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
@@ -187,10 +234,10 @@ where
     I: Iterator<Item = &'a Activity>,
     W: Write,
 {
-            let file = BufWriter::new(writer);
-            let mut writer = csv::Writer::from_writer(file);
-            for a in activities {
-                writer.serialize(a)?;
-            }
-            Ok(())
+    let file = BufWriter::new(writer);
+    let mut writer = csv::Writer::from_writer(file);
+    for a in activities {
+        writer.serialize(a)?;
+    }
+    Ok(())
 }
