@@ -1,6 +1,6 @@
 mod activity;
-mod activity_vec;
 mod history;
+mod state;
 
 use std::{collections::BTreeMap, fs::File, io::Cursor};
 
@@ -8,14 +8,14 @@ pub use activity::{load_activities, store_activities, Selected};
 use activity::{Activity, ActivityBeingBuilt};
 use time::Date;
 
-use activity_vec::ActivityVec;
+pub use state::ActivityVec;
 
-use self::history::{Action, History};
+use self::{history::{Action, History}, state::State};
 
 pub struct App {
     filename: String,
     selected: Option<(Date, usize)>,
-    activities: BTreeMap<Date, ActivityVec>,
+    activities: State,
     new_activity: Option<ActivityBeingBuilt>,
     show_stats: bool,
     history: History,
@@ -26,10 +26,10 @@ impl App {
         Self {
             filename,
             selected: None,
-            activities: activities.into_iter().fold(BTreeMap::new(), |mut acc, a| {
-                acc.entry(a.day).or_default().push(a);
+            activities: activities.into_iter().fold(BTreeMap::<Date, ActivityVec>::new(), |mut acc, a| {
+                acc.entry(a.day).or_default().add(a);
                 acc
-            }),
+            }).into(),
             new_activity: None,
             show_stats: false,
             history: History::default(),
@@ -140,12 +140,10 @@ impl App {
             Some(n) => n.try_into()?,
             None => return Ok(()),
         };
-        let acts = self.activities.entry(to_submit.day).or_default();
-        match acts.remove_by_id(to_submit.id) {
+        match self.activities.add(to_submit.clone()) {
             Some(prev) => self.history.frwd(Action::Edit { prev }),
-            None => self.history.frwd(Action::AddActivity(to_submit.clone())),
+            None => self.history.frwd(Action::AddActivity(to_submit)),
         }
-        acts.push(to_submit);
         self.new_activity = None;
         Ok(())
     }
@@ -156,20 +154,10 @@ impl App {
             Some(s) => s,
             None => return,
         };
-        let acts = match self.activities.get_mut(&date) {
-            Some(acts) => acts,
-            None => return,
-        };
-        if acts.len() > index {
-            let act = acts.remove(index);
-            if acts.is_empty() {
-                self.activities.remove(&date);
-            }
-            self.previous();
-            self.history.frwd(Action::DeleteActivity(act));
+        if let Some(act) = self.activities.remove(date, index) {
+            self.history.frwd(Action::DeleteActivity(act))
         }
     }
-
 }
 
 impl Drop for App {

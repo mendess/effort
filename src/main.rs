@@ -3,7 +3,7 @@ mod combo_buffer;
 mod selected_vec;
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -113,6 +113,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('s') => app.toggle_stats(),
                         KeyCode::Char('o') => app.create_new_activity(),
                         KeyCode::Char('u') => app.undo(),
+                        KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => app.redo(),
                         KeyCode::Char('e') => app.edit_activity(),
                         _ => {}
                     }

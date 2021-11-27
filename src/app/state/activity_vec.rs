@@ -1,8 +1,8 @@
-use std::{mem::replace, ops::Deref};
+use std::ops::Deref;
 
 use uuid::Uuid;
 
-use super::activity::Activity;
+use crate::app::activity::Activity;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Default)]
 pub struct ActivityVec {
@@ -18,7 +18,7 @@ impl Deref for ActivityVec {
 }
 
 impl ActivityVec {
-    pub fn push(&mut self, t: Activity) -> Option<Activity> {
+    pub fn add(&mut self, t: Activity) -> Option<Activity> {
         let prev = if let Some(i) = self.v.iter().position(|a| a.id == t.id) {
             Some(self.v.remove(i))
         } else {
@@ -29,12 +29,12 @@ impl ActivityVec {
         prev
     }
 
-    pub fn remove(&mut self, index: usize) -> Activity {
-        self.v.remove(index)
+    pub fn remove(&mut self, index: usize) -> Option<Activity> {
+        (self.v.len() > index).then(|| self.v.remove(index))
     }
 
-    pub fn replace(&mut self, new: Activity) -> Activity {
-        replace(self.v.iter_mut().find(|old| old.id == new.id).unwrap(), new)
+    pub fn find_by_id(&mut self, id: Uuid) -> Option<&mut Activity> {
+        self.v.iter_mut().find(|a| a.id == id)
     }
 
     pub fn remove_by_id(&mut self, id: Uuid) -> Option<Activity> {

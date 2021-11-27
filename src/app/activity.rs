@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use time::{
     format_description::FormatItem, macros::format_description, Date, Month, OffsetDateTime, Time,
 };
@@ -16,11 +16,11 @@ pub const DATE_FMT: &[FormatItem<'static>] = format_description!("[day]/[month]/
 #[derive(Debug, Clone)]
 pub struct ActivityBeingBuilt {
     id: Uuid,
-    action: String,
-    start_time: String,
-    end_time: String,
-    day: String,
-    selected: Selected,
+    pub action: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub day: String,
+    pub selected: Selected,
     pub editing: bool,
 }
 
@@ -200,20 +200,12 @@ fn parse_day(s: &str) -> Result<Date, &'static str> {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Activity {
-    #[serde(skip_serializing)]
-    #[serde(deserialize_with = "random_uuid")]
+    #[serde(skip_serializing, skip_deserializing, default = "Uuid::new_v4")]
     pub id: Uuid,
     pub day: Date,
     pub start_time: Time,
     pub end_time: Option<Time>,
     pub action: String,
-}
-
-fn random_uuid<'de, D>(_: D) -> Result<Uuid, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(Uuid::default())
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
