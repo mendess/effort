@@ -1,6 +1,7 @@
 mod activity;
 mod combo_buffer;
 mod selected_vec;
+mod sorted_vec;
 
 use activity::{store_activities, Activity, ActivityBeingBuilt, Selected};
 use crossterm::{
@@ -8,11 +9,13 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use sorted_vec::SortedVec;
 
 use std::{
     collections::BTreeMap,
     env::args,
-    io::{self, Stdout},
+    fs::File,
+    io::{self, Cursor, Stdout},
 };
 use time::{format_description::FormatItem, macros::format_description, Date, Duration};
 use tui::{
@@ -35,7 +38,7 @@ fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
 struct App {
     filename: String,
     selected: Option<(Date, usize)>,
-    activities: BTreeMap<Date, Vec<Activity>>,
+    activities: BTreeMap<Date, SortedVec<Activity>>,
     new_activity: Option<ActivityBeingBuilt>,
     show_stats: bool,
 }
@@ -57,7 +60,7 @@ impl App {
     }
 
     fn next(&mut self) {
-        fn from_new_kv((date, _): (&Date, &Vec<Activity>)) -> (Date, usize) {
+        fn from_new_kv((date, _): (&Date, &SortedVec<Activity>)) -> (Date, usize) {
             (*date, 0)
         }
         if let Some((date, index)) = self.selected {
@@ -84,7 +87,7 @@ impl App {
     }
 
     fn previous(&mut self) {
-        fn from_new_kv((date, acts): (&Date, &Vec<Activity>)) -> (Date, usize) {
+        fn from_new_kv((date, acts): (&Date, &SortedVec<Activity>)) -> (Date, usize) {
             (*date, acts.len().saturating_sub(1))
         }
 
@@ -137,13 +140,21 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        let r = store_activities(
-            &self.filename,
-            self.activities.iter().flat_map(|(_, acts)| acts.iter()),
-        );
+        println!("Auto saving file");
+        let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
+        let r = File::create(&self.filename).and_then(|f| store_activities(f, acts.clone()));
         if let Err(e) = r {
-            eprintln!("Fatal error writting file '{}'!! {:?}", self.filename, e);
-            eprintln!("{:?}", self.activities);
+            eprintln!("Fatal error writting file '{}'!!", self.filename);
+            eprintln!("{:?}", e);
+            let mut s = Vec::new();
+            let c = Cursor::new(&mut s);
+            match store_activities(c, acts) {
+                Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
+                Err(e) => {
+                    eprintln!("Failed to serialize csv in memory: {:?}", e);
+                    eprintln!("{:?}", self.activities);
+                }
+            };
         }
     }
 }
@@ -158,7 +169,8 @@ fn main() -> anyhow::Result<()> {
     };
     let activities = load_activities(&path)?;
     let mut terminal = setup_terminal()?;
-    let res = run_app(&mut terminal, App::new(path, activities));
+    let mut app = App::new(path, activities);
+    let res = run_app(&mut terminal, &mut app);
 
     // restore terminal
     disable_raw_mode()?;
@@ -176,11 +188,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> anyhow::Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Result<()> {
     let mut combo_buffer = combo_buffer::ComboBuffer::default();
     let mut error = None;
     loop {
-        terminal.draw(|f| ui(f, &mut app, &mut error))?;
+        terminal.draw(|f| ui(f, app, &mut error))?;
         error = None;
         if let Event::Key(key) = event::read()? {
             if let KeyCode::Char('q') = key.code {

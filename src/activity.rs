@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::{self, BufReader, BufWriter},
-    path::Path,
-};
+use std::{fs::File, io::{self, BufReader, BufWriter, Write}, path::Path};
 
 use serde::{Deserialize, Serialize};
 use time::{
@@ -165,12 +161,12 @@ fn parse_day(s: &str) -> Result<Date, &'static str> {
     Ok(today)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Activity {
     pub day: Date,
-    pub action: String,
     pub start_time: Time,
     pub end_time: Option<Time>,
+    pub action: String,
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
@@ -186,20 +182,15 @@ pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
     }
 }
 
-pub fn store_activities<'a, I, P>(path: P, activities: I) -> io::Result<()>
+pub fn store_activities<'a, I, W>(writer: W, activities: I) -> io::Result<()>
 where
     I: Iterator<Item = &'a Activity>,
-    P: AsRef<Path>,
+    W: Write,
 {
-    match File::create(path) {
-        Ok(f) => {
-            let file = BufWriter::new(f);
+            let file = BufWriter::new(writer);
             let mut writer = csv::Writer::from_writer(file);
             for a in activities {
                 writer.serialize(a)?;
             }
             Ok(())
-        }
-        Err(e) => Err(e),
-    }
 }
