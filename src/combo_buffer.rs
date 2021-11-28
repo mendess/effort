@@ -16,6 +16,7 @@ struct ComboNode {
 #[derive(Clone, Copy, Debug)]
 pub enum Combo {
     Delete,
+    SelectFirst,
 }
 
 macro_rules! n {
@@ -34,7 +35,8 @@ macro_rules! n {
 }
 
 lazy_static! {
-    static ref COMBO_TREE: Vec<ComboNode> = vec![n!('d', n!('d' => Delete))];
+    static ref COMBO_TREE: Vec<ComboNode> =
+        vec![n!('d', n!('d' => Delete)), n!('g', n!('g' => SelectFirst))];
 }
 
 #[derive(Debug, Clone)]

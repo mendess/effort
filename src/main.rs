@@ -112,12 +112,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('u') => app.undo(),
                         KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => app.redo(),
                         KeyCode::Char('e') => app.edit_activity(),
+                        KeyCode::Char('G') => app.select_last(),
                         _ => {}
                     }
                     if let Some(combo) = combo_buffer.combo(key.code) {
                         match combo {
                             combo_buffer::Combo::Delete => {
                                 app.delete_activity();
+                            }
+                            combo_buffer::Combo::SelectFirst => {
+                                app.select_first();
                             }
                         }
                     }

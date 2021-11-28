@@ -89,6 +89,18 @@ impl App {
         }
     }
 
+    pub fn select_first(&mut self) {
+        self.selected = self.activities.iter().next().map(|(d, _)| (d.0, 0));
+    }
+
+    pub fn select_last(&mut self) {
+        self.selected = self
+            .activities
+            .iter()
+            .next_back()
+            .map(|(d, acts)| (d.0, acts.len() - 1))
+    }
+
     pub fn create_new_activity(&mut self) {
         self.new_activity = Some(Default::default());
     }
