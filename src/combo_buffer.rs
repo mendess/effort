@@ -54,7 +54,7 @@ impl ComboBuffer {
     pub fn combo(&mut self, k: KeyCode) -> Option<Combo> {
         match self.cursor.iter().find(|n| n.node == k).map(|n| &n.inner) {
             Some(NodeInner::Combo(c)) => {
-                *self = Self::default();
+                self.clear();
                 return Some(*c);
             }
             Some(NodeInner::More(more)) => {
@@ -63,5 +63,9 @@ impl ComboBuffer {
             None => *self = Self::default(),
         }
         None
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default()
     }
 }

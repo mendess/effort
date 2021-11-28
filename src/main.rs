@@ -4,6 +4,7 @@ mod selected_vec;
 mod ui;
 mod util;
 
+use combo_buffer::ComboBuffer;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -58,7 +59,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Result<()> {
-    let mut combo_buffer = combo_buffer::ComboBuffer::default();
+    let mut combo_buffer = ComboBuffer::default();
     let mut error = None;
     loop {
         terminal.draw(|f| ui::ui(f, app, &mut error))?;
@@ -71,6 +72,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
             }
             match app.new_activity_mut() {
                 Some(new) => {
+                    combo_buffer.clear();
                     if new.editing {
                         match key.code {
                             KeyCode::Char(c) => new.selected_buf().push(c),
