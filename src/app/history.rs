@@ -28,9 +28,10 @@ impl History {
                     state.remove_by_id(a.day, a.id);
                 }
                 Action::Edit { prev } => {
-                    let old = state.find_by_id(prev.day, prev.id)
+                    let mut old = state
+                        .find_by_id(prev.day, prev.id)
                         .expect("there should be a vec here since we are undoing an edit");
-                    swap(old, prev);
+                    swap(&mut *old, prev);
                 }
                 Action::AddActivity(a) => {
                     state.add(a.clone());
@@ -47,9 +48,10 @@ impl History {
                     state.add(a.clone());
                 }
                 Action::Edit { prev } => {
-                    let old = state.find_by_id(prev.day, prev.id)
+                    let mut old = state
+                        .find_by_id(prev.day, prev.id)
                         .expect("there should be a vec here since we are undoing an edit");
-                    swap(old, prev);
+                    swap(&mut *old, prev);
                 }
                 Action::AddActivity(act) => {
                     state.remove_by_id(act.day, act.id);

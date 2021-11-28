@@ -5,13 +5,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use time::{
-    format_description::FormatItem, macros::format_description, Date, Month, OffsetDateTime, Time,
-};
+use time::{Date, Month, OffsetDateTime, Time};
 use uuid::Uuid;
 
-pub const TIME_FMT: &[FormatItem<'static>] = format_description!("[hour]:[minute]");
-pub const DATE_FMT: &[FormatItem<'static>] = format_description!("[day]/[month]/[year]");
+use crate::util::time_fmt::{DATE_FMT, TIME_FMT};
 
 #[derive(Debug, Clone)]
 pub struct ActivityBeingBuilt {
@@ -200,12 +197,12 @@ fn parse_day(s: &str) -> Result<Date, &'static str> {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Activity {
-    #[serde(skip_serializing, skip_deserializing, default = "Uuid::new_v4")]
-    pub id: Uuid,
     pub day: Date,
     pub start_time: Time,
     pub end_time: Option<Time>,
     pub action: String,
+    #[serde(skip_serializing, skip_deserializing, default = "Uuid::new_v4")]
+    pub id: Uuid,
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {

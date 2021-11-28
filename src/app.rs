@@ -2,15 +2,18 @@ mod activity;
 mod history;
 mod state;
 
-use std::{collections::BTreeMap, fs::File, io::Cursor};
+use std::{
+    cmp::Reverse,
+    collections::BTreeMap,
+    fs::File,
+    io::{self, Cursor},
+};
 
-pub use activity::{load_activities, store_activities, Selected};
-use activity::{Activity, ActivityBeingBuilt};
-use time::Date;
-
+pub use activity::{load_activities, store_activities, Activity, ActivityBeingBuilt, Selected};
+use history::{Action, History};
 pub use state::ActivityVec;
-
-use self::{history::{Action, History}, state::State};
+use state::State;
+use time::Date;
 
 pub struct App {
     filename: String,
@@ -26,10 +29,16 @@ impl App {
         Self {
             filename,
             selected: None,
-            activities: activities.into_iter().fold(BTreeMap::<Date, ActivityVec>::new(), |mut acc, a| {
-                acc.entry(a.day).or_default().add(a);
-                acc
-            }).into(),
+            activities: activities
+                .into_iter()
+                .fold(
+                    BTreeMap::<Reverse<Date>, ActivityVec>::new(),
+                    |mut acc, a| {
+                        acc.entry(Reverse(a.day)).or_default().add(a);
+                        acc
+                    },
+                )
+                .into(),
             new_activity: None,
             show_stats: false,
             history: History::default(),
@@ -37,11 +46,11 @@ impl App {
     }
 
     pub fn next(&mut self) {
-        fn from_new_kv((date, _): (&Date, &ActivityVec)) -> (Date, usize) {
-            (*date, 0)
+        fn from_new_kv((date, _): (&Reverse<Date>, &ActivityVec)) -> (Date, usize) {
+            (date.0, 0)
         }
         if let Some((date, index)) = self.selected {
-            let len = match self.activities.get(&date) {
+            let len = match self.activities.get(&Reverse(date)) {
                 Some(acts) => acts.len(),
                 None => {
                     self.selected = None;
@@ -51,7 +60,7 @@ impl App {
             if index + 1 >= len {
                 self.selected = self
                     .activities
-                    .range(date..)
+                    .range(Reverse(date)..)
                     .nth(1)
                     .map(from_new_kv)
                     .or_else(|| self.activities.iter().next().map(from_new_kv));
@@ -64,14 +73,14 @@ impl App {
     }
 
     pub fn previous(&mut self) {
-        fn from_new_kv((date, acts): (&Date, &ActivityVec)) -> (Date, usize) {
-            (*date, acts.len().saturating_sub(1))
+        fn from_new_kv((date, acts): (&Reverse<Date>, &ActivityVec)) -> (Date, usize) {
+            (date.0, acts.len().saturating_sub(1))
         }
 
         self.selected = match self.selected {
             Some((date, 0)) => self
                 .activities
-                .range(..date)
+                .range(..Reverse(date))
                 .next_back()
                 .map(from_new_kv)
                 .or_else(|| self.activities.iter().next_back().map(from_new_kv)),
@@ -88,7 +97,15 @@ impl App {
         matches!(self.new_activity.as_ref().map(|a| a.editing), Some(true))
     }
 
-    pub fn new_activity(&mut self) -> &mut Option<ActivityBeingBuilt> {
+    pub fn n_days(&self) -> usize {
+        self.activities.len()
+    }
+
+    pub fn new_activity(&self) -> &Option<ActivityBeingBuilt> {
+        &self.new_activity
+    }
+
+    pub fn new_activity_mut(&mut self) -> &mut Option<ActivityBeingBuilt> {
         &mut self.new_activity
     }
 
@@ -100,10 +117,10 @@ impl App {
         self.show_stats
     }
 
-    pub fn activities(&self) -> impl Iterator<Item = (&Date, &[Activity])> {
+    pub fn activities(&self) -> impl DoubleEndedIterator<Item = (&Date, &[Activity])> {
         self.activities
             .iter()
-            .map(|(date, acts)| (date, acts.as_slice()))
+            .map(|(date, acts)| (&date.0, acts.as_slice()))
     }
 
     pub fn selected(&self) -> Option<(Date, usize)> {
@@ -117,6 +134,11 @@ impl App {
     pub fn redo(&mut self) {
         self.history.redo(&mut self.activities)
     }
+
+    pub fn save(&self) -> io::Result<()> {
+        let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
+        File::create(&self.filename).and_then(|f| store_activities(f, acts))
+    }
 }
 
 /// Actions that influence the history
@@ -127,7 +149,11 @@ impl App {
             Some(s) => s,
             None => return,
         };
-        let act = match self.activities.get(&date).and_then(|a| a.get(index)) {
+        let act = match self
+            .activities
+            .get(&Reverse(date))
+            .and_then(|a| a.get(index))
+        {
             Some(act) => act,
             None => return,
         };
@@ -163,14 +189,12 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         println!("Auto saving file");
-        let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
-        let r = File::create(&self.filename).and_then(|f| store_activities(f, acts.clone()));
-        if let Err(e) = r {
+        if let Err(e) = self.save() {
             eprintln!("Fatal error writting file '{}'!!", self.filename);
             eprintln!("{:?}", e);
             let mut s = Vec::new();
             let c = Cursor::new(&mut s);
-            match store_activities(c, acts) {
+            match store_activities(c, self.activities.iter().flat_map(|(_, acts)| acts.iter())) {
                 Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
                 Err(e) => {
                     eprintln!("Failed to serialize csv in memory: {:?}", e);
