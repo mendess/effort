@@ -85,7 +85,12 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Dura
                 String::new(),
                 total_time,
             ])
-            .style(Style::default().bg(Color::Blue).fg(Color::Black));
+            .style(
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            );
 
             let interspersed =
                 acts.windows(2)
