@@ -190,7 +190,7 @@ impl Drop for App {
     fn drop(&mut self) {
         println!("Auto saving file");
         if let Err(e) = self.save() {
-            eprintln!("Fatal error writting file '{}'!!", self.filename);
+            eprintln!("Fatal error writing file '{}'!!", self.filename);
             eprintln!("{:?}", e);
             let mut s = Vec::new();
             let c = Cursor::new(&mut s);
