@@ -13,4 +13,3 @@ lazy_static = "1.4.0"
 serde = { version = "1.0.130", features = ["derive"] }
 time = { version = "0.3.5", features = ["local-offset", "formatting", "serde", "macros", "parsing", "serde-human-readable"] }
 tui = { version = "0.15", features = ["crossterm"] }
-uuid = { version = "0.8.2", features = ["v4"] }

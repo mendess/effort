@@ -2,17 +2,17 @@ use std::{
     fs::File,
     io::{self, BufReader, BufWriter, Write},
     path::Path,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
 use time::{Date, Month, OffsetDateTime, Time};
-use uuid::Uuid;
 
 use crate::util::time_fmt::{DATE_FMT, TIME_FMT};
 
 #[derive(Debug, Clone)]
 pub struct ActivityBeingBuilt {
-    id: Uuid,
+    id: ActivityId,
     pub action: String,
     pub start_time: String,
     pub end_time: String,
@@ -52,7 +52,7 @@ impl Selected {
 impl Default for ActivityBeingBuilt {
     fn default() -> Self {
         Self {
-            id: Uuid::default(),
+            id: ActivityId::default(),
             action: String::new(),
             start_time: String::default(),
             end_time: String::new(),
@@ -195,14 +195,25 @@ fn parse_day(s: &str) -> Result<Date, &'static str> {
     Ok(today)
 }
 
+static ID: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ActivityId(usize);
+
+impl Default for ActivityId {
+    fn default() -> Self {
+        Self(ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Activity {
     pub day: Date,
     pub start_time: Time,
     pub end_time: Option<Time>,
     pub action: String,
-    #[serde(skip_serializing, skip_deserializing, default = "Uuid::new_v4")]
-    pub id: Uuid,
+    #[serde(skip_serializing, skip_deserializing, default)]
+    pub id: ActivityId,
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {

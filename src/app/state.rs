@@ -3,11 +3,10 @@ mod activity_vec;
 use std::{cmp::Reverse, collections::BTreeMap, ops::Deref};
 
 use time::Date;
-use uuid::Uuid;
 
 use self::activity_vec::ActivityVecGuard;
 
-use super::activity::Activity;
+use super::activity::{Activity, ActivityId};
 pub use activity_vec::ActivityVec;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,7 +25,7 @@ impl State {
         }
     }
 
-    pub fn remove_by_id(&mut self, date: Date, id: Uuid) -> Option<Activity> {
+    pub fn remove_by_id(&mut self, date: Date, id: ActivityId) -> Option<Activity> {
         if let Some(acts) = self.0.get_mut(&Reverse(date)) {
             let act = acts.remove_by_id(id);
             if acts.is_empty() {
@@ -38,7 +37,7 @@ impl State {
         }
     }
 
-    pub fn find_by_id(&mut self, date: Date, id: Uuid) -> Option<ActivityVecGuard<'_>> {
+    pub fn find_by_id(&mut self, date: Date, id: ActivityId) -> Option<ActivityVecGuard<'_>> {
         self.0
             .get_mut(&Reverse(date))
             .and_then(|acts| acts.find_by_id(id))

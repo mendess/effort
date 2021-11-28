@@ -1,8 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use uuid::Uuid;
-
-use crate::app::activity::Activity;
+use crate::app::activity::{Activity, ActivityId};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Default)]
 pub struct ActivityVec {
@@ -24,13 +22,11 @@ impl ActivityVec {
         } else {
             None
         };
-        // let i = match self.v.binary_search(&t) {
-        //     Ok(i) => i,
-        //     Err(i) => i,
-        // };
-        // self.v.insert(i, t);
-        self.v.push(t);
-        self.v.sort_unstable();
+        let i = match self.v.binary_search(&t) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+        self.v.insert(i, t);
         prev
     }
 
@@ -38,11 +34,14 @@ impl ActivityVec {
         (self.v.len() > index).then(|| self.v.remove(index))
     }
 
-    pub fn find_by_id(&mut self, id: Uuid) -> Option<ActivityVecGuard<'_>> {
-        self.v.iter().position(|a| a.id == id).map(|i| ActivityVecGuard { vec: self, i })
+    pub fn find_by_id(&mut self, id: ActivityId) -> Option<ActivityVecGuard<'_>> {
+        self.v
+            .iter()
+            .position(|a| a.id == id)
+            .map(|i| ActivityVecGuard { vec: self, i })
     }
 
-    pub fn remove_by_id(&mut self, id: Uuid) -> Option<Activity> {
+    pub fn remove_by_id(&mut self, id: ActivityId) -> Option<Activity> {
         self.v
             .iter()
             .position(|a| a.id == id)
@@ -65,17 +64,13 @@ impl<'v> Deref for ActivityVecGuard<'v> {
     type Target = Activity;
 
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            self.vec.v.get_unchecked(self.i)
-        }
+        unsafe { self.vec.v.get_unchecked(self.i) }
     }
 }
 
 impl<'v> DerefMut for ActivityVecGuard<'v> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            self.vec.v.get_unchecked_mut(self.i)
-        }
+        unsafe { self.vec.v.get_unchecked_mut(self.i) }
     }
 }
 
