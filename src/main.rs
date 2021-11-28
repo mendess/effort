@@ -92,8 +92,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                     } else {
                         match key.code {
                             KeyCode::Char('i') => new.editing = true,
-                            KeyCode::Char('k') => new.select_next(),
-                            KeyCode::Char('j') => new.select_prev(),
+                            KeyCode::Char('k') => new.select_prev(),
+                            KeyCode::Char('j') => new.select_next(),
                             KeyCode::Enter => {
                                 if let Err(msg) = app.submit_activity() {
                                     error = Some(msg)

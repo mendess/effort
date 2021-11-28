@@ -1,11 +1,12 @@
 use std::iter::repeat;
 
-use time::Duration;
+use time::{Duration, Weekday};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, Row, Table, TableState},
+    text::Span,
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, TableState},
     Frame,
 };
 
@@ -14,7 +15,7 @@ use crate::{
     selected_vec::SelectedVec,
     util::{
         size_slice,
-        time_fmt::{DATE_FMT, TIME_FMT},
+        time_fmt::{DATE_FMT_FULL, TIME_FMT},
     },
 };
 
@@ -62,12 +63,20 @@ impl Activity {
     }
 }
 
-fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Duration {
+struct Stats {
+    total_month_time: Duration,
+    work_days: u32,
+}
+
+fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
     let mut total_month_time = Duration::ZERO;
+    let mut work_days = 0;
+    let selected_id = app.selected_id();
     let items: SelectedVec<_> = app
         .activities()
+        .filter(|(_, acts)| !acts.is_empty())
         .flat_map(|(date, acts)| {
-            let is_selected = |i| Some((*date, i)) == app.selected();
+            let is_selected = |a: &Activity| Some(a.id) == selected_id;
 
             let total_time = acts
                 .iter()
@@ -80,33 +89,34 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Dura
                 .unwrap_or_else(|| String::from("N/A"));
 
             let separator = Row::new([
-                date.format(DATE_FMT).unwrap(),
+                date.format(DATE_FMT_FULL).unwrap(),
                 String::new(),
                 String::new(),
                 total_time,
             ])
             .style(
                 Style::default()
-                    .bg(Color::Blue)
+                    .bg(
+                        if matches!(date.weekday(), Weekday::Saturday | Weekday::Sunday) {
+                            Color::Yellow
+                        } else {
+                            work_days += 1;
+                            Color::Blue
+                        },
+                    )
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
             );
 
-            let interspersed =
-                acts.windows(2)
-                    .map(size_slice)
-                    .enumerate()
-                    .flat_map(move |(i, [a, next])| {
-                        let mut iteration = vec![(a.to_row(), is_selected(i))];
-                        if let Some(bubble) = a.distance(next) {
-                            iteration.push((bubble, false))
-                        }
-                        iteration
-                    });
+            let interspersed = acts.windows(2).map(size_slice).flat_map(move |[a, next]| {
+                let mut iteration = vec![(a.to_row(), is_selected(a))];
+                if let Some(bubble) = a.distance(next) {
+                    iteration.push((bubble, false))
+                }
+                iteration
+            });
 
-            let last = acts
-                .last()
-                .map(|a| (a.to_row(), is_selected(acts.len() - 1)));
+            let last = acts.last().map(|a| (a.to_row(), is_selected(a)));
 
             std::iter::once((separator, false))
                 .chain(interspersed)
@@ -118,14 +128,14 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Dura
 
     let items = Table::new(items)
         .header(Row::new(["Action", "start time", "end time", "time spent"]))
-        .block(Block::default().borders(Borders::ALL).title("Activities"))
+        .block(Block::default())
         .highlight_style(
             Style::default()
                 // .bg(Color::LightGreen)
                 // .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol(">> ")
+        .highlight_symbol("> ")
         .widths(&[
             Constraint::Percentage(100),
             Constraint::Length(13),
@@ -138,10 +148,22 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Dura
         state.select(index);
         state
     });
-    total_month_time
+    Stats {
+        total_month_time,
+        work_days,
+    }
 }
 
 pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'static str>) {
+    let stats = render_table(frame, frame.size(), app);
+    if let Some(new) = app.new_activity() {
+        render_new_activity(frame, frame.size(), error, new);
+    } else if app.show_stats() {
+        render_stats(frame, frame.size(), stats);
+    }
+}
+
+pub fn ui2<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'static str>) {
     let layout = Layout::default().direction(Direction::Vertical);
     if let Some(new) = app.new_activity() {
         let chunks = layout
@@ -152,11 +174,11 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'
         render_new_activity(frame, chunks[1], error, new);
     } else if app.show_stats() {
         let chunks = layout
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+            .constraints([Constraint::Percentage(100)])
             .split(frame.size());
 
-        let total_month_time = render_table(frame, chunks[0], app);
-        render_stats(frame, chunks[1], total_month_time, app.n_days() as _);
+        let stats = render_table(frame, chunks[0], app);
+        render_stats(frame, chunks[1], stats);
     } else {
         let chunks = layout
             .constraints([Constraint::Percentage(100)])
@@ -172,15 +194,17 @@ fn render_new_activity<B: Backend>(
     error: &mut Option<&'static str>,
     new: &ActivityBeingBuilt,
 ) {
+    const NUM_WIDGETS: u16 = 5;
+    const WIDGET_HEIGHT: u16 = 3;
+    let bottom = bottom_of_rect(rect, WIDGET_HEIGHT * NUM_WIDGETS);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints({
-            let len = 4 + error.is_some() as u16;
-            repeat(Constraint::Percentage(100 / len))
-                .take(len.into())
-                .collect::<Vec<_>>()
-        })
-        .split(rect);
+        .constraints(
+            repeat(Constraint::Length(WIDGET_HEIGHT))
+                .take(NUM_WIDGETS.into())
+                .collect::<Vec<_>>(),
+        )
+        .split(bottom);
     let mkparagraph = |title, buf, action| {
         Paragraph::new(buf)
             .style(if action == new.selected {
@@ -196,6 +220,7 @@ fn render_new_activity<B: Backend>(
             .block(Block::default().borders(Borders::ALL).title(title))
     };
 
+    frame.render_widget(Clear, bottom);
     [
         mkparagraph("action", new.action.as_str(), Selected::Action),
         mkparagraph("start time", &new.start_time, Selected::StartTime),
@@ -208,7 +233,12 @@ fn render_new_activity<B: Backend>(
 
     if let Some(msg) = error {
         frame.render_widget(
-            mkparagraph("error", msg, Selected::Action).style(Style::default().fg(Color::Red)),
+            Paragraph::new(*msg).block(
+                Block::default()
+                    .title("error")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Red)),
+            ),
             chunks[4],
         );
     }
@@ -217,23 +247,42 @@ fn render_new_activity<B: Backend>(
 fn render_stats<B: Backend>(
     frame: &mut Frame<B>,
     rect: Rect,
-    total_month_time: Duration,
-    n_days: u32,
+    Stats {
+        total_month_time,
+        work_days,
+    }: Stats,
 ) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(rect);
-    let total_time = Paragraph::new(fmt_duration(total_month_time)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Total time this month"),
-    );
-    let avg_per_day = Paragraph::new(fmt_duration(total_month_time / n_days)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Average time per day"),
-    );
-    frame.render_widget(total_time, chunks[0]);
-    frame.render_widget(avg_per_day, chunks[1]);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Thick)
+        .title("Stats");
+    let legend_style = Style::default().add_modifier(Modifier::BOLD);
+    let table = Table::new(vec![
+        Row::new([
+            Span::styled("Total time this month: ", legend_style),
+            Span::raw(fmt_duration(total_month_time)),
+        ]),
+        Row::new([
+            Span::styled("Average time per work day: ", legend_style),
+            Span::raw(fmt_duration(total_month_time / work_days)),
+        ]),
+        Row::new([
+            Span::styled("Total work days (not counting weekends): ", legend_style),
+            Span::raw(work_days.to_string()),
+        ]),
+    ])
+    .block(block)
+    .widths(&[Constraint::Length(42), Constraint::Percentage(100)]);
+
+    let bottom = bottom_of_rect(rect, 5);
+    frame.render_widget(Clear, bottom);
+    frame.render_widget(table, bottom);
+}
+
+fn bottom_of_rect(r: Rect, height: u16) -> Rect {
+    Rect {
+        y: r.y + (r.height - height),
+        height,
+        ..r
+    }
 }

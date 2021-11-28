@@ -3,11 +3,11 @@ pub mod time_fmt {
 
     pub const TIME_FMT: &[FormatItem<'static>] = format_description!("[hour]:[minute]");
     pub const DATE_FMT: &[FormatItem<'static>] = format_description!("[day]/[month]/[year]");
+    pub const DATE_FMT_FULL: &[FormatItem<'static>] =
+        format_description!("[day]/[month]/[year] [weekday]");
 }
 
 pub fn size_slice<T, const N: usize>(s: &[T]) -> &[T; N] {
     assert!(s.len() == N);
-    unsafe {
-        &*(s.as_ptr() as *const [T; N])
-    }
+    unsafe { &*(s.as_ptr() as *const [T; N]) }
 }

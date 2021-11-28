@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::{self, Cursor},
+    iter::successors,
 };
 
 pub use activity::{load_activities, store_activities, Activity, ActivityBeingBuilt, Selected};
@@ -14,6 +15,8 @@ use history::{Action, History};
 pub use state::ActivityVec;
 use state::State;
 use time::Date;
+
+use self::activity::ActivityId;
 
 pub struct App {
     filename: String,
@@ -101,16 +104,20 @@ impl App {
             .map(|(d, acts)| (d.0, acts.len() - 1))
     }
 
+    pub fn selected_id(&self) -> Option<ActivityId> {
+        let (date, index) = self.selected?;
+        self.activities
+            .get(&Reverse(date))
+            .and_then(|v| v.get(index))
+            .map(|a| a.id)
+    }
+
     pub fn create_new_activity(&mut self) {
         self.new_activity = Some(Default::default());
     }
 
     pub fn editing(&self) -> bool {
         matches!(self.new_activity.as_ref().map(|a| a.editing), Some(true))
-    }
-
-    pub fn n_days(&self) -> usize {
-        self.activities.len()
     }
 
     pub fn new_activity(&self) -> &Option<ActivityBeingBuilt> {
@@ -135,8 +142,17 @@ impl App {
             .map(|(date, acts)| (&date.0, acts.as_slice()))
     }
 
-    pub fn selected(&self) -> Option<(Date, usize)> {
-        self.selected
+    #[allow(dead_code)]
+    pub fn activities_filled(&self) -> impl Iterator<Item = (Date, &[Activity])> {
+        static EMPTY: &[Activity] = &[];
+        let most_recent = self.activities.iter().next().map(|(d, _)| d.0);
+        successors(most_recent, |d| d.previous_day().filter(|d| d.day() != 20)).map(|d| match self
+            .activities
+            .get(&Reverse(d))
+        {
+            Some(acts) => (d, acts.as_slice()),
+            None => (d, EMPTY),
+        })
     }
 
     pub fn undo(&mut self) {
