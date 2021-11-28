@@ -167,6 +167,10 @@ impl App {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
         File::create(&self.filename).and_then(|f| store_activities(f, acts))
     }
+
+    pub fn cancel_edit(&mut self) {
+        self.new_activity = None
+    }
 }
 
 /// Actions that influence the history

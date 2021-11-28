@@ -155,37 +155,29 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
 }
 
 pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'static str>) {
-    let stats = render_table(frame, frame.size(), app);
     if let Some(new) = app.new_activity() {
+        render_table(frame, frame.size(), app);
         render_new_activity(frame, frame.size(), error, new);
     } else if app.show_stats() {
-        render_stats(frame, frame.size(), stats);
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(frame.size().height - stats_size::TOTAL_HEIGHT),
+                Constraint::Length(stats_size::TOTAL_HEIGHT),
+            ])
+            .split(frame.size());
+
+        let stats = render_table(frame, layout[0], app);
+        render_stats(frame, layout[1], stats);
+    } else {
+        render_table(frame, frame.size(), app);
     }
 }
 
-pub fn ui2<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'static str>) {
-    let layout = Layout::default().direction(Direction::Vertical);
-    if let Some(new) = app.new_activity() {
-        let chunks = layout
-            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-            .split(frame.size());
-
-        render_table(frame, chunks[0], app);
-        render_new_activity(frame, chunks[1], error, new);
-    } else if app.show_stats() {
-        let chunks = layout
-            .constraints([Constraint::Percentage(100)])
-            .split(frame.size());
-
-        let stats = render_table(frame, chunks[0], app);
-        render_stats(frame, chunks[1], stats);
-    } else {
-        let chunks = layout
-            .constraints([Constraint::Percentage(100)])
-            .split(frame.size());
-
-        render_table(frame, chunks[0], app);
-    }
+mod new_act_sizes {
+    pub(super) const NUM_WIDGETS: u16 = 5;
+    pub(super) const WIDGET_HEIGHT: u16 = 3;
+    pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
 }
 
 fn render_new_activity<B: Backend>(
@@ -194,14 +186,12 @@ fn render_new_activity<B: Backend>(
     error: &mut Option<&'static str>,
     new: &ActivityBeingBuilt,
 ) {
-    const NUM_WIDGETS: u16 = 5;
-    const WIDGET_HEIGHT: u16 = 3;
-    let bottom = bottom_of_rect(rect, WIDGET_HEIGHT * NUM_WIDGETS);
+    let bottom = bottom_of_rect(rect, new_act_sizes::TOTAL_HEIGHT);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            repeat(Constraint::Length(WIDGET_HEIGHT))
-                .take(NUM_WIDGETS.into())
+            repeat(Constraint::Length(new_act_sizes::WIDGET_HEIGHT))
+                .take(new_act_sizes::NUM_WIDGETS.into())
                 .collect::<Vec<_>>(),
         )
         .split(bottom);
@@ -244,6 +234,10 @@ fn render_new_activity<B: Backend>(
     }
 }
 
+mod stats_size {
+    pub(super) const TOTAL_HEIGHT: u16 = 5;
+}
+
 fn render_stats<B: Backend>(
     frame: &mut Frame<B>,
     rect: Rect,
@@ -274,7 +268,7 @@ fn render_stats<B: Backend>(
     .block(block)
     .widths(&[Constraint::Length(42), Constraint::Percentage(100)]);
 
-    let bottom = bottom_of_rect(rect, 5);
+    let bottom = bottom_of_rect(rect, stats_size::TOTAL_HEIGHT);
     frame.render_widget(Clear, bottom);
     frame.render_widget(table, bottom);
 }

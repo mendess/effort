@@ -111,6 +111,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "effort"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossterm 0.22.1",
+ "csv",
+ "lazy_static",
+ "serde",
+ "time",
+ "tui",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -438,16 +451,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "wtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossterm 0.22.1",
- "csv",
- "lazy_static",
- "serde",
- "time",
- "tui",
-]
