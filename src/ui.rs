@@ -158,19 +158,28 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'
     if let Some(new) = app.new_activity() {
         render_table(frame, frame.size(), app);
         render_new_activity(frame, frame.size(), error, new);
-    } else if app.show_stats() {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(frame.size().height - stats_size::TOTAL_HEIGHT),
-                Constraint::Length(stats_size::TOTAL_HEIGHT),
-            ])
-            .split(frame.size());
-
-        let stats = render_table(frame, layout[0], app);
-        render_stats(frame, layout[1], stats);
     } else {
-        render_table(frame, frame.size(), app);
+        let stats_height = app
+            .show_stats()
+            .then(|| frame.size().height.checked_sub(stats_size::TOTAL_HEIGHT))
+            .flatten();
+        match stats_height {
+            Some(height) => {
+                let layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(height),
+                        Constraint::Length(stats_size::TOTAL_HEIGHT),
+                    ])
+                    .split(frame.size());
+
+                let stats = render_table(frame, layout[0], app);
+                render_stats(frame, layout[1], stats);
+            }
+            _ => {
+                render_table(frame, frame.size(), app);
+            }
+        }
     }
 }
 
@@ -275,7 +284,7 @@ fn render_stats<B: Backend>(
 
 fn bottom_of_rect(r: Rect, height: u16) -> Rect {
     Rect {
-        y: r.y + (r.height - height),
+        y: r.y + (r.height.saturating_sub(height)),
         height,
         ..r
     }

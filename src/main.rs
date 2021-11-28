@@ -72,7 +72,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
             }
             match app.new_activity_mut() {
                 Some(new) => {
-                    combo_buffer.clear();
+                    combo_buffer.reset();
                     if new.editing {
                         match key.code {
                             KeyCode::Char(c) => new.selected_buf().push(c),
@@ -118,10 +118,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                     }
                     if let Some(combo) = combo_buffer.combo(key.code) {
                         match combo {
-                            combo_buffer::Combo::Delete => {
+                            combo_buffer::ComboAction::Delete => {
                                 app.delete_activity();
                             }
-                            combo_buffer::Combo::SelectFirst => {
+                            combo_buffer::ComboAction::SelectFirst => {
                                 app.select_first();
                             }
                         }

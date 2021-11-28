@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{self, BufReader, BufWriter, Write},
+    marker::PhantomData,
     path::Path,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -109,16 +110,23 @@ impl TryFrom<&ActivityBeingBuilt> for Activity {
         if builder.start_time.is_empty() {
             return Err("start time required");
         }
+        let start_time = parse_time(&builder.start_time)?;
         Ok(Activity {
             id: builder.id,
-            start_time: parse_time(&builder.start_time)?,
+            start_time,
             end_time: if builder.end_time.is_empty() {
                 None
             } else {
-                Some(parse_time(&builder.end_time)?)
+                let end_time = parse_time(&builder.end_time)?;
+                if end_time < start_time {
+                    return Err("end time can't be before start time");
+                } else {
+                    Some(end_time)
+                }
             },
             day: parse_day(&builder.day)?,
             action: builder.action.clone(),
+            _m: PhantomData,
         })
     }
 }
@@ -214,6 +222,8 @@ pub struct Activity {
     pub action: String,
     #[serde(skip_serializing, skip_deserializing, default)]
     pub id: ActivityId,
+    #[serde(skip)]
+    _m: PhantomData<()>, // prevent constructing this type outside this module
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
