@@ -1,4 +1,4 @@
-use std::iter::repeat;
+use std::{borrow::Cow, iter::repeat};
 
 use time::{Duration, Weekday};
 use tui::{
@@ -154,10 +154,25 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
     }
 }
 
-pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'static str>) {
+pub type InfoPopup = Option<Result<Cow<'static, str>, Cow<'static, str>>>;
+
+pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopup) {
+    let constraints = match frame.size().height.checked_sub(3) {
+        Some(new_height) => [Constraint::Length(new_height), Constraint::Length(3)],
+        None => [
+            Constraint::Length(frame.size().height),
+            Constraint::Length(0),
+        ],
+    };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(frame.size());
+    let main = chunks[0];
+    let info = chunks[1];
     if let Some(new) = app.new_activity() {
-        render_table(frame, frame.size(), app);
-        render_new_activity(frame, frame.size(), error, new);
+        render_table(frame, main, app);
+        render_new_activity(frame, main, new);
     } else {
         let stats_height = app
             .show_stats()
@@ -171,30 +186,30 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, error: &mut Option<&'
                         Constraint::Length(height),
                         Constraint::Length(stats_size::TOTAL_HEIGHT),
                     ])
-                    .split(frame.size());
+                    .split(main);
 
                 let stats = render_table(frame, layout[0], app);
                 render_stats(frame, layout[1], stats);
             }
             _ => {
-                render_table(frame, frame.size(), app);
+                render_table(frame, main, app);
             }
         }
+    }
+    match info_popup {
+        Some(Ok(m)) => render_info(frame, info, "info", m, Color::Green),
+        Some(Err(error)) => render_info(frame, info, "error", error, Color::Red),
+        None => {}
     }
 }
 
 mod new_act_sizes {
-    pub(super) const NUM_WIDGETS: u16 = 5;
+    pub(super) const NUM_WIDGETS: u16 = 4;
     pub(super) const WIDGET_HEIGHT: u16 = 3;
     pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
 }
 
-fn render_new_activity<B: Backend>(
-    frame: &mut Frame<B>,
-    rect: Rect,
-    error: &mut Option<&'static str>,
-    new: &ActivityBeingBuilt,
-) {
+fn render_new_activity<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &ActivityBeingBuilt) {
     let bottom = bottom_of_rect(rect, new_act_sizes::TOTAL_HEIGHT);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -229,18 +244,6 @@ fn render_new_activity<B: Backend>(
     .into_iter()
     .zip(&chunks)
     .for_each(|(a, c)| frame.render_widget(a, *c));
-
-    if let Some(msg) = error {
-        frame.render_widget(
-            Paragraph::new(*msg).block(
-                Block::default()
-                    .title("error")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Red)),
-            ),
-            chunks[4],
-        );
-    }
 }
 
 mod stats_size {
@@ -288,4 +291,16 @@ fn bottom_of_rect(r: Rect, height: u16) -> Rect {
         height,
         ..r
     }
+}
+
+fn render_info<B: Backend>(frame: &mut Frame<B>, rect: Rect, title: &str, s: &str, color: Color) {
+    frame.render_widget(
+        Paragraph::new(s).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(color)),
+        ),
+        rect,
+    );
 }

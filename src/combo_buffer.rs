@@ -51,12 +51,14 @@ fn build_combos<const N: usize>(sequences: [(&str, ComboAction); N]) -> Vec<Comb
 pub enum ComboAction {
     Delete,
     SelectFirst,
+    Save,
 }
 
 lazy_static! {
     static ref COMBO_TREE: Vec<ComboNode> = build_combos([
         ("dd", ComboAction::Delete),
-        ("gg", ComboAction::SelectFirst)
+        ("gg", ComboAction::SelectFirst),
+        ("zz", ComboAction::Save),
     ]);
 }
 

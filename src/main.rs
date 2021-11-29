@@ -60,10 +60,10 @@ fn main() -> anyhow::Result<()> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Result<()> {
     let mut combo_buffer = ComboBuffer::default();
-    let mut error = None;
+    let mut info_popup = None;
     loop {
-        terminal.draw(|f| ui::ui(f, app, &mut error))?;
-        error = None;
+        terminal.draw(|f| ui::ui(f, app, &info_popup))?;
+        info_popup = None;
         if let Event::Key(key) = event::read()? {
             if let KeyCode::Char('q') = key.code {
                 if !app.editing() {
@@ -84,7 +84,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                             KeyCode::Esc => new.editing = false,
                             KeyCode::Enter => {
                                 if let Err(msg) = app.submit_activity() {
-                                    error = Some(msg)
+                                    info_popup = Some(Err(msg.into()))
                                 }
                             }
                             _ => {}
@@ -97,7 +97,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                             KeyCode::Esc => app.cancel_edit(),
                             KeyCode::Enter => {
                                 if let Err(msg) = app.submit_activity() {
-                                    error = Some(msg)
+                                    info_popup = Some(Err(msg.into()))
                                 }
                             }
                             _ => {}
@@ -123,6 +123,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                             }
                             combo_buffer::ComboAction::SelectFirst => {
                                 app.select_first();
+                            }
+                            combo_buffer::ComboAction::Save => {
+                                match app.save() {
+                                    Ok(_) => info_popup = Some(Ok("saved successfully".into())),
+                                    Err(e) => {
+                                        info_popup =
+                                            Some(Err(format!("failed to save: {}", e).into()))
+                                    }
+                                };
                             }
                         }
                     }
