@@ -1,6 +1,6 @@
 use std::{borrow::Cow, iter::repeat};
 
-use time::{Duration, Weekday};
+use time::Duration;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -14,7 +14,7 @@ use crate::{
     app::{Activity, ActivityBeingBuilt, App, Selected},
     selected_vec::SelectedVec,
     util::{
-        size_slice,
+        is_weekend, size_slice,
         time_fmt::{DATE_FMT_FULL, TIME_FMT},
     },
 };
@@ -66,16 +66,18 @@ impl Activity {
 struct Stats {
     total_month_time: Duration,
     work_days: u32,
+    total_worked_days: u32,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
     let mut total_month_time = Duration::ZERO;
-    let mut work_days = 0;
+    let mut total_worked_days = 0;
     let selected_id = app.selected_id();
     let items: SelectedVec<_> = app
         .activities()
         .filter(|(_, acts)| !acts.is_empty())
         .flat_map(|(date, acts)| {
+            total_worked_days += 1;
             let is_selected = |a: &Activity| Some(a.id) == selected_id;
 
             let total_time = acts
@@ -96,14 +98,11 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
             ])
             .style(
                 Style::default()
-                    .bg(
-                        if matches!(date.weekday(), Weekday::Saturday | Weekday::Sunday) {
-                            Color::Yellow
-                        } else {
-                            work_days += 1;
-                            Color::Blue
-                        },
-                    )
+                    .bg(if is_weekend(date) {
+                        Color::Yellow
+                    } else {
+                        Color::Blue
+                    })
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
             );
@@ -150,26 +149,15 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
     });
     Stats {
         total_month_time,
-        work_days,
+        work_days: app.n_workdays_so_far(),
+        total_worked_days,
     }
 }
 
 pub type InfoPopup = Option<Result<Cow<'static, str>, Cow<'static, str>>>;
 
 pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopup) {
-    let constraints = match frame.size().height.checked_sub(3) {
-        Some(new_height) => [Constraint::Length(new_height), Constraint::Length(3)],
-        None => [
-            Constraint::Length(frame.size().height),
-            Constraint::Length(0),
-        ],
-    };
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(frame.size());
-    let main = chunks[0];
-    let info = chunks[1];
+    let main = frame.size();
     if let Some(new) = app.new_activity() {
         render_table(frame, main, app);
         render_new_activity(frame, main, new);
@@ -196,10 +184,18 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopu
             }
         }
     }
-    match info_popup {
-        Some(Ok(m)) => render_info(frame, info, "info", m, Color::Green),
-        Some(Err(error)) => render_info(frame, info, "error", error, Color::Red),
-        None => {}
+
+    if let Some(y) = main.height.checked_sub(3) {
+        let info = Rect {
+            y,
+            height: 3,
+            ..main
+        };
+        match info_popup {
+            Some(Ok(m)) => render_info(frame, info, "info", m, Color::Green),
+            Some(Err(error)) => render_info(frame, info, "error", error, Color::Red),
+            None => {}
+        }
     }
 }
 
@@ -247,7 +243,7 @@ fn render_new_activity<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &Activ
 }
 
 mod stats_size {
-    pub(super) const TOTAL_HEIGHT: u16 = 5;
+    pub(super) const TOTAL_HEIGHT: u16 = 7;
 }
 
 fn render_stats<B: Backend>(
@@ -256,6 +252,7 @@ fn render_stats<B: Backend>(
     Stats {
         total_month_time,
         work_days,
+        total_worked_days,
     }: Stats,
 ) {
     let block = Block::default()
@@ -273,8 +270,18 @@ fn render_stats<B: Backend>(
             Span::raw(fmt_duration(total_month_time / work_days)),
         ]),
         Row::new([
+            Span::styled("Overtime hours", legend_style),
+            Span::raw(fmt_duration(
+                total_month_time - Duration::hours((work_days * 8).into()),
+            )),
+        ]),
+        Row::new([
             Span::styled("Total work days (not counting weekends): ", legend_style),
             Span::raw(work_days.to_string()),
+        ]),
+        Row::new([
+            Span::styled("Total worked days (counting weekends): ", legend_style),
+            Span::raw(total_worked_days.to_string()),
         ]),
     ])
     .block(block)
@@ -294,6 +301,7 @@ fn bottom_of_rect(r: Rect, height: u16) -> Rect {
 }
 
 fn render_info<B: Backend>(frame: &mut Frame<B>, rect: Rect, title: &str, s: &str, color: Color) {
+    frame.render_widget(Clear, rect);
     frame.render_widget(
         Paragraph::new(s).block(
             Block::default()

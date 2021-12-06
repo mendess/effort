@@ -8,6 +8,7 @@ use std::{
     fs::File,
     io::{self, Cursor},
     iter::successors,
+    path::Path,
 };
 
 pub use activity::{load_activities, store_activities, Activity, ActivityBeingBuilt, Selected};
@@ -16,10 +17,13 @@ pub use state::ActivityVec;
 use state::State;
 use time::Date;
 
+use crate::util::is_weekend;
+
 use self::activity::ActivityId;
 
 pub struct App {
     filename: String,
+    backup: String,
     selected: Option<(Date, usize)>,
     activities: State,
     new_activity: Option<ActivityBeingBuilt>,
@@ -30,6 +34,7 @@ pub struct App {
 impl App {
     pub fn new(filename: String, activities: Vec<Activity>) -> Self {
         Self {
+            backup: format!("{}.bck", filename),
             filename,
             selected: None,
             activities: activities
@@ -46,6 +51,26 @@ impl App {
             show_stats: false,
             history: History::default(),
         }
+    }
+
+    pub fn n_workdays_so_far(&self) -> u32 {
+        let mut iter = self.activities.iter();
+        let last = match iter.next() {
+            Some((d, _)) => d.0,
+            None => return 0,
+        };
+        let mut first = match iter.next_back() {
+            Some((d, _)) => d.0,
+            None => return 0,
+        };
+        let mut counter = 0;
+        while first < last {
+            if !is_weekend(&first) {
+                counter += 1;
+            }
+            first = first.next_day().unwrap();
+        }
+        counter
     }
 
     pub fn next(&mut self) {
@@ -164,8 +189,12 @@ impl App {
     }
 
     pub fn save(&self) -> io::Result<()> {
+        self.save_to(&self.filename)
+    }
+
+    pub fn save_to<P: AsRef<Path>>(&self, p: P) -> io::Result<()> {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
-        File::create(&self.filename).and_then(|f| store_activities(f, acts))
+        File::create(p.as_ref()).and_then(|f| store_activities(f, acts))
     }
 
     pub fn cancel_edit(&mut self) {
@@ -189,7 +218,8 @@ impl App {
             Some(act) => act,
             None => return,
         };
-        self.new_activity = Some(act.into())
+        self.new_activity = Some(act.into());
+        let _ = self.save_to(&self.backup);
     }
 
     /// Submit a currently being edited activity
@@ -203,6 +233,7 @@ impl App {
             None => self.history.frwd(Action::AddActivity(to_submit)),
         }
         self.new_activity = None;
+        let _ = self.save_to(&self.backup);
         Ok(())
     }
 
@@ -215,24 +246,31 @@ impl App {
         if let Some(act) = self.activities.remove(date, index) {
             self.history.frwd(Action::DeleteActivity(act))
         }
+        let _ = self.save_to(&self.backup);
     }
 }
 
 impl Drop for App {
     fn drop(&mut self) {
         println!("Auto saving file");
-        if let Err(e) = self.save() {
-            eprintln!("Fatal error writing file '{}'!!", self.filename);
-            eprintln!("{:?}", e);
-            let mut s = Vec::new();
-            let c = Cursor::new(&mut s);
-            match store_activities(c, self.activities.iter().flat_map(|(_, acts)| acts.iter())) {
-                Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
-                Err(e) => {
-                    eprintln!("Failed to serialize csv in memory: {:?}", e);
-                    eprintln!("{:?}", self.activities);
-                }
-            };
+        match self.save() {
+            Err(e) => {
+                eprintln!("Fatal error writing file '{}'!!", self.filename);
+                eprintln!("{:?}", e);
+                let mut s = Vec::new();
+                let c = Cursor::new(&mut s);
+                match store_activities(c, self.activities.iter().flat_map(|(_, acts)| acts.iter()))
+                {
+                    Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
+                    Err(e) => {
+                        eprintln!("Failed to serialize csv in memory: {:?}", e);
+                        eprintln!("{:?}", self.activities);
+                    }
+                };
+            }
+            Ok(()) => {
+                let _ = std::fs::remove_file(&self.backup);
+            }
         }
     }
 }
