@@ -6,7 +6,7 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Span,
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, TableState},
+    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
     Frame,
 };
 
@@ -80,21 +80,32 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
             total_worked_days += 1;
             let is_selected = |a: &Activity| Some(a.id) == selected_id;
 
-            let total_time = acts
-                .iter()
-                .map(|a| Some(a.end_time? - a.start_time))
-                .try_fold(Duration::ZERO, |acc, a| Some(acc + a?))
-                .map(|d| {
-                    total_month_time += d;
-                    fmt_duration(d)
-                })
-                .unwrap_or_else(|| String::from("N/A"));
+            let (total_time, some_none) = {
+                let mut some_none = false;
+                let total_time = acts
+                    .iter()
+                    .filter_map(|a| {
+                        if let Some(end_time) = a.end_time {
+                            Some(end_time - a.start_time)
+                        } else {
+                            some_none = true;
+                            None
+                        }
+                    })
+                    .sum();
+                total_month_time += total_time;
+                (fmt_duration(total_time), some_none)
+            };
 
             let separator = Row::new([
-                date.format(DATE_FMT_FULL).unwrap(),
-                String::new(),
-                String::new(),
-                total_time,
+                Cell::from(date.format(DATE_FMT_FULL).unwrap()),
+                Cell::from(String::new()),
+                Cell::from(String::new()),
+                Cell::from(total_time).style(Style::default().fg(if some_none {
+                    Color::Red
+                } else {
+                    Color::Black
+                })),
             ])
             .style(
                 Style::default()
