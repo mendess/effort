@@ -284,12 +284,22 @@ fn render_stats<B: Backend>(
                 total_month_time / work_days
             })),
         ]),
-        Row::new([
-            Span::styled("Overtime hours", legend_style),
-            Span::raw(fmt_duration(
-                total_month_time - Duration::hours((work_days * 8).into()),
-            )),
-        ]),
+        {
+            let overtime = total_month_time - Duration::hours((work_days * 8).into());
+            let (legend, dur, legend_style) = if overtime.is_negative() {
+                (
+                    "Undertime hours",
+                    overtime * -1,
+                    legend_style.fg(Color::Red),
+                )
+            } else {
+                ("Overtime hours", overtime, legend_style.fg(Color::Green))
+            };
+            Row::new([
+                Span::styled(legend, legend_style),
+                Span::raw(fmt_duration(dur)),
+            ])
+        },
         Row::new([
             Span::styled("Total work days (not counting weekends): ", legend_style),
             Span::raw(work_days.to_string()),
