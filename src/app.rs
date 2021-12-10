@@ -61,10 +61,10 @@ impl App {
         };
         let mut first = match iter.next_back() {
             Some((d, _)) => d.0,
-            None => return 0,
+            None => return 1,
         };
         let mut counter = 0;
-        while first < last {
+        while first <= last {
             if !is_weekend(&first) {
                 counter += 1;
             }

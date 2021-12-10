@@ -278,7 +278,11 @@ fn render_stats<B: Backend>(
         ]),
         Row::new([
             Span::styled("Average time per work day: ", legend_style),
-            Span::raw(fmt_duration(total_month_time / work_days)),
+            Span::raw(fmt_duration(if work_days == 0 {
+                Duration::seconds(0)
+            } else {
+                total_month_time / work_days
+            })),
         ]),
         Row::new([
             Span::styled("Overtime hours", legend_style),
