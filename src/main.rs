@@ -37,22 +37,34 @@ fn main() -> anyhow::Result<()> {
             std::process::exit(1)
         }
     };
+    let export = args()
+        .nth(2)
+        .filter(|s| s == "-e" || s == "--export")
+        .is_some();
+
     let activities = app::load_activities(&path)?;
-    let mut terminal = setup_terminal()?;
     let mut app = App::new(path, activities);
-    let res = run_app(&mut terminal, &mut app);
+    if export {
+        match app.export() {
+            Ok(()) => println!("exported!"),
+            Err(e) => println!("failed to export: {:?}", e),
+        }
+    } else {
+        let mut terminal = setup_terminal()?;
+        let res = run_app(&mut terminal, &mut app);
 
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+        // restore terminal
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
 
-    if let Err(err) = res {
-        println!("{:?}", err)
+        if let Err(err) = res {
+            println!("{:?}", err)
+        }
     }
 
     Ok(())

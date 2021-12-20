@@ -14,18 +14,10 @@ use crate::{
     app::{Activity, ActivityBeingBuilt, App, Selected},
     selected_vec::SelectedVec,
     util::{
-        is_weekend, size_slice,
+        is_weekend, size_slice, fmt_duration,
         time_fmt::{DATE_FMT_FULL, TIME_FMT},
     },
 };
-
-fn fmt_duration(d: Duration) -> String {
-    format!(
-        "{:02}:{:02}",
-        d.whole_hours(),
-        d.whole_minutes().saturating_sub(d.whole_hours() * 60)
-    )
-}
 
 impl Activity {
     fn to_row(&self) -> Row {

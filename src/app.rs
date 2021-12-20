@@ -15,9 +15,9 @@ pub use activity::{load_activities, store_activities, Activity, ActivityBeingBui
 use history::{Action, History};
 pub use state::ActivityVec;
 use state::State;
-use time::Date;
+use time::{macros::format_description, Date};
 
-use crate::util::is_weekend;
+use crate::util::{fmt_duration, is_weekend};
 
 use self::activity::ActivityId;
 
@@ -195,6 +195,26 @@ impl App {
     pub fn save_to<P: AsRef<Path>>(&self, p: P) -> io::Result<()> {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
         File::create(p.as_ref()).and_then(|f| store_activities(f, acts))
+    }
+
+    pub fn export(&self) -> io::Result<()> {
+        let mut acts = self
+            .activities
+            .iter()
+            .flat_map(|(_, acts)| acts.iter())
+            .collect::<Vec<_>>();
+        acts.sort_unstable();
+        let mut w = csv::Writer::from_path(format!("{}-export.csv", self.filename))?;
+        static FMT: &[time::format_description::FormatItem<'static>] =
+            format_description!("[year]-[day]-[month]");
+        for a in acts.into_iter().filter(|a| a.end_time.is_some()) {
+            w.write_record([
+                &a.day.format(FMT).expect("a correct format"),
+                &a.action,
+                &fmt_duration(a.end_time.unwrap() - a.start_time),
+            ])?;
+        }
+        Ok(())
     }
 
     pub fn cancel_edit(&mut self) {
