@@ -202,15 +202,29 @@ impl App {
             .activities
             .iter()
             .flat_map(|(_, acts)| acts.iter())
-            .collect::<Vec<_>>();
+            .map(|a| {
+                if a.end_time.is_some() {
+                    Ok(a)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("activity {:?} doesn't have an end time", a),
+                    ))
+                }
+            })
+            .collect::<io::Result<Vec<_>>>()?;
         acts.sort_unstable();
         let mut w = csv::Writer::from_path(format!("{}-export.csv", self.filename))?;
         static FMT: &[time::format_description::FormatItem<'static>] =
-            format_description!("[year]-[day]-[month]");
-        for a in acts.into_iter().filter(|a| a.end_time.is_some()) {
+            format_description!("[month]-[day]-[year]");
+        static TIME_FMT: &[time::format_description::FormatItem<'static>] =
+            format_description!("[hour repr:12]:[minute] [period]");
+        for a in acts.into_iter() {
             w.write_record([
                 &a.day.format(FMT).expect("a correct format"),
                 &a.action,
+                &a.start_time.format(TIME_FMT).unwrap(),
+                &a.end_time.unwrap().format(TIME_FMT).unwrap(),
                 &fmt_duration(a.end_time.unwrap() - a.start_time),
             ])?;
         }
