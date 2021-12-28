@@ -14,7 +14,7 @@ use crate::{
     app::{Activity, ActivityBeingBuilt, App, Selected},
     selected_vec::SelectedVec,
     util::{
-        is_weekend, size_slice, fmt_duration,
+        fmt_duration, is_weekend, size_slice,
         time_fmt::{DATE_FMT_FULL, TIME_FMT},
     },
 };
@@ -45,12 +45,12 @@ impl Activity {
         let bubble_length = bubble_end - bubble_start;
         bubble_length.is_positive().then(|| {
             Row::new([
-                String::new(),
-                String::new(),
-                String::new(),
-                fmt_duration(bubble_length),
+                Cell::from(String::new()),
+                String::new().into(),
+                String::new().into(),
+                Cell::from(fmt_duration(bubble_length))
+                    .style(Style::default().fg(Color::Black).bg(Color::DarkGray)),
             ])
-            .style(Style::default().fg(Color::DarkGray))
         })
     }
 }
