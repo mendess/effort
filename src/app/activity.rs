@@ -107,17 +107,14 @@ impl TryFrom<&ActivityBeingBuilt> for Activity {
         if builder.action.is_empty() {
             return Err("action field is mandatory");
         }
-        if builder.start_time.is_empty() {
-            return Err("start time required");
-        }
-        let start_time = parse_time(&builder.start_time)?;
+        let start_time = parse_time(&builder.start_time, true)?;
         Ok(Activity {
             id: builder.id,
             start_time,
             end_time: if builder.end_time.is_empty() {
                 None
             } else {
-                let end_time = parse_time(&builder.end_time)?;
+                let end_time = parse_time(&builder.end_time, false)?;
                 if end_time < start_time {
                     return Err("end time can't be before start time");
                 } else {
@@ -139,16 +136,28 @@ impl TryFrom<&mut ActivityBeingBuilt> for Activity {
     }
 }
 
-fn parse_time(s: &str) -> Result<Time, &'static str> {
-    let (hour, minute) = s
-        .split_once(':')
-        .ok_or("failed to parse time: expected ':'")?;
+fn parse_time(s: &str, assume_now: bool) -> Result<Time, &'static str> {
+    let now = OffsetDateTime::now_local()
+        .map(OffsetDateTime::time)
+        .map_err(|_| "The system's UTC offset could not be determined")?;
+    if s.eq_ignore_ascii_case("now") || (s.is_empty() && assume_now) {
+        return Ok(now);
+    }
+    let (hour, minute) = s.split_once(':').unwrap_or((s, ""));
     let hour = hour
         .parse()
         .map_err(|_| "failed to parse time: invalid hour")?;
-    let minute = minute
-        .parse()
-        .map_err(|_| "failed to parse time: invalid minute")?;
+    let minute = if minute.is_empty() {
+        if hour == now.hour() {
+            now.minute()
+        } else {
+            return Err("can't use current minute because you are not inputing current hour");
+        }
+    } else {
+        minute
+            .parse()
+            .map_err(|_| "failed to parse time: invalid minute")?
+    };
 
     Time::from_hms(hour, minute, 0)
         .map_err(|_| "failed to parse time: hour or minute out of bounds")
