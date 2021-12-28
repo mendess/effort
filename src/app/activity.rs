@@ -141,7 +141,7 @@ fn parse_time(s: &str, assume_now: bool) -> Result<Time, &'static str> {
         .map(OffsetDateTime::time)
         .map_err(|_| "The system's UTC offset could not be determined")?;
     if s.eq_ignore_ascii_case("now") || (s.is_empty() && assume_now) {
-        return Ok(now);
+        return Ok(Time::from_hms(now.hour(), now.minute(), 0).unwrap());
     }
     let (hour, minute) = s.split_once(':').unwrap_or((s, ""));
     let hour = hour
