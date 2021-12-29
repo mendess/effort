@@ -138,7 +138,15 @@ impl App {
     }
 
     pub fn create_new_activity(&mut self) {
-        self.new_activity = Some(Default::default());
+        let last_time = self
+            .selected
+            .and_then(|(date, index)| {
+                self.activities
+                    .get(&Reverse(date))
+                    .and_then(|day| day.get(index))
+            })
+            .and_then(|a| a.end_time);
+        self.new_activity = Some(ActivityBeingBuilt::new(last_time));
     }
 
     pub fn editing(&self) -> bool {
@@ -244,15 +252,15 @@ impl App {
             Some(s) => s,
             None => return,
         };
-        let act = match self
+        let (act, last) = match self
             .activities
             .get(&Reverse(date))
-            .and_then(|a| a.get(index))
+            .and_then(|a| a.get(index).map(|x| (x, a.get(index.saturating_sub(1)))))
         {
-            Some(act) => act,
+            Some(acts) => acts,
             None => return,
         };
-        self.new_activity = Some(act.into());
+        self.new_activity = Some((act, last.and_then(|a| a.end_time)).into());
         let _ = self.save_to(&self.backup);
     }
 

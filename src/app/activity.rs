@@ -14,6 +14,7 @@ use crate::util::time_fmt::{DATE_FMT, TIME_FMT};
 #[derive(Debug, Clone)]
 pub struct ActivityBeingBuilt {
     id: ActivityId,
+    last_time: Option<Time>,
     pub action: String,
     pub start_time: String,
     pub end_time: String,
@@ -50,10 +51,11 @@ impl Selected {
     }
 }
 
-impl Default for ActivityBeingBuilt {
-    fn default() -> Self {
+impl ActivityBeingBuilt {
+    pub fn new(last_time: Option<Time>) -> Self {
         Self {
             id: ActivityId::default(),
+            last_time,
             action: String::new(),
             start_time: String::default(),
             end_time: String::new(),
@@ -62,9 +64,7 @@ impl Default for ActivityBeingBuilt {
             editing: true,
         }
     }
-}
 
-impl ActivityBeingBuilt {
     pub fn select_next(&mut self) {
         self.selected = self.selected.next();
     }
@@ -83,10 +83,11 @@ impl ActivityBeingBuilt {
     }
 }
 
-impl From<&Activity> for ActivityBeingBuilt {
-    fn from(a: &Activity) -> Self {
+impl From<(&Activity, Option<Time>)> for ActivityBeingBuilt {
+    fn from((a, last_time): (&Activity, Option<Time>)) -> Self {
         Self {
             id: a.id,
+            last_time,
             action: a.action.clone(),
             start_time: a.start_time.format(TIME_FMT).unwrap(),
             end_time: a
@@ -107,14 +108,14 @@ impl TryFrom<&ActivityBeingBuilt> for Activity {
         if builder.action.is_empty() {
             return Err("action field is mandatory");
         }
-        let start_time = parse_time(&builder.start_time, true)?;
+        let start_time = parse_time(&builder.start_time, true, builder.last_time)?;
         Ok(Activity {
             id: builder.id,
             start_time,
             end_time: if builder.end_time.is_empty() {
                 None
             } else {
-                let end_time = parse_time(&builder.end_time, false)?;
+                let end_time = parse_time(&builder.end_time, false, None)?;
                 if end_time < start_time {
                     return Err("end time can't be before start time");
                 } else {
@@ -136,12 +137,18 @@ impl TryFrom<&mut ActivityBeingBuilt> for Activity {
     }
 }
 
-fn parse_time(s: &str, assume_now: bool) -> Result<Time, &'static str> {
+fn parse_time(s: &str, assume_now: bool, last_time: Option<Time>) -> Result<Time, &'static str> {
     let now = OffsetDateTime::now_local()
         .map(OffsetDateTime::time)
         .map_err(|_| "The system's UTC offset could not be determined")?;
     if s.eq_ignore_ascii_case("now") || (s.is_empty() && assume_now) {
         return Ok(Time::from_hms(now.hour(), now.minute(), 0).unwrap());
+    } else if s.eq_ignore_ascii_case("last") {
+        if let Some(last_time) = last_time {
+            return Ok(last_time);
+        } else {
+            return Err("no previous time available");
+        }
     }
     let (hour, minute) = s.split_once(':').unwrap_or((s, ""));
     let hour = hour
