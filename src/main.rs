@@ -126,6 +126,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => app.redo(),
                         KeyCode::Char('e') => app.edit_activity(),
                         KeyCode::Char('G') => app.select_last(),
+                        KeyCode::Char('p') => {
+                            if let Err(msg) = app.paste() {
+                                info_popup = Some(Err(msg.into()))
+                            }
+                        }
                         _ => {}
                     }
                     if let Some(combo) = combo_buffer.combo(key.code) {
@@ -143,6 +148,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                                         info_popup =
                                             Some(Err(format!("failed to save: {}", e).into()))
                                     }
+                                };
+                            }
+                            combo_buffer::ComboAction::Yank => {
+                                info_popup = if app.yank_selected() {
+                                    Some(Ok("yanked!".into()))
+                                } else {
+                                    Some(Err("nothing selected".into()))
                                 };
                             }
                         }

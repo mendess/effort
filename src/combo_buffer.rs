@@ -52,6 +52,7 @@ pub enum ComboAction {
     Delete,
     SelectFirst,
     Save,
+    Yank,
 }
 
 lazy_static! {
@@ -59,6 +60,7 @@ lazy_static! {
         ("dd", ComboAction::Delete),
         ("gg", ComboAction::SelectFirst),
         ("zz", ComboAction::Save),
+        ("yy", ComboAction::Yank),
     ]);
 }
 

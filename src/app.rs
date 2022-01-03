@@ -29,6 +29,7 @@ pub struct App {
     new_activity: Option<ActivityBeingBuilt>,
     show_stats: bool,
     history: History,
+    clipboard: Option<Activity>,
 }
 
 impl App {
@@ -50,6 +51,7 @@ impl App {
             new_activity: None,
             show_stats: false,
             history: History::default(),
+            clipboard: None,
         }
     }
 
@@ -137,15 +139,16 @@ impl App {
             .map(|a| a.id)
     }
 
+    fn selected_activity(&self) -> Option<&Activity> {
+        self.selected.and_then(|(date, index)| {
+            self.activities
+                .get(&Reverse(date))
+                .and_then(|day| day.get(index))
+        })
+    }
+
     pub fn create_new_activity(&mut self) {
-        let last_time = self
-            .selected
-            .and_then(|(date, index)| {
-                self.activities
-                    .get(&Reverse(date))
-                    .and_then(|day| day.get(index))
-            })
-            .and_then(|a| a.end_time);
+        let last_time = self.selected_activity().and_then(|a| a.end_time);
         self.new_activity = Some(ActivityBeingBuilt::new(last_time));
     }
 
@@ -242,6 +245,16 @@ impl App {
     pub fn cancel_edit(&mut self) {
         self.new_activity = None
     }
+
+    pub fn yank_selected(&mut self) -> bool {
+        let selected = self.selected_activity().cloned();
+        if let Some(selected) = selected {
+            self.clipboard = Some(selected);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Actions that influence the history
@@ -270,10 +283,7 @@ impl App {
             Some(n) => n.try_into()?,
             None => return Ok(()),
         };
-        match self.activities.add(to_submit.clone()) {
-            Some(prev) => self.history.frwd(Action::Edit { prev }),
-            None => self.history.frwd(Action::AddActivity(to_submit)),
-        }
+        self.add_activity(to_submit);
         self.new_activity = None;
         let _ = self.save_to(&self.backup);
         Ok(())
@@ -286,9 +296,32 @@ impl App {
             None => return,
         };
         if let Some(act) = self.activities.remove(date, index) {
+            self.clipboard = Some(act.clone());
             self.history.frwd(Action::DeleteActivity(act))
         }
         let _ = self.save_to(&self.backup);
+    }
+
+    pub fn paste(&mut self) -> Result<(), &'static str> {
+        let mut to_paste = match &self.clipboard {
+            Some(s) => s.clone(),
+            None => return Err("clipboard is empty"),
+        };
+        to_paste.id = ActivityId::default();
+        if let Some(last) = self.selected_activity().and_then(|a| a.end_time) {
+            to_paste.start_time = last;
+        }
+        to_paste.end_time = None;
+        self.add_activity(to_paste);
+        let _ = self.save_to(&self.backup);
+        Ok(())
+    }
+
+    fn add_activity(&mut self, a: Activity) {
+        match self.activities.add(a.clone()) {
+            Some(prev) => self.history.frwd(Action::Edit { prev }),
+            None => self.history.frwd(Action::AddActivity(a)),
+        }
     }
 }
 
