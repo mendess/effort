@@ -5,7 +5,7 @@ use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Span, Spans},
     widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
     Frame,
 };
@@ -305,17 +305,24 @@ fn render_stats<B: Backend>(
             Span::raw(work_days.to_string()),
         ]),
         Row::new([
-            Span::styled("Total worked days (normal + weekends): ", legend_style),
-            Span::raw(format!(
-                "{} + {} = {}",
-                workdays_worked,
-                weekend_days_worked,
-                workdays_worked + weekend_days_worked
-            )),
+            Spans::from(vec![Span::styled("Total worked days: ", legend_style)]),
+            Spans::from(vec![
+                Span::raw(format!("{} (", workdays_worked + weekend_days_worked)),
+                Span::styled(
+                    format!("{}", workdays_worked),
+                    Style::default().fg(Color::Blue),
+                ),
+                Span::raw("/"),
+                Span::styled(
+                    format!("{}", weekend_days_worked),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::raw(")"),
+            ]),
         ]),
     ])
     .block(block)
-    .widths(&[Constraint::Length(42), Constraint::Percentage(100)]);
+    .widths(&[Constraint::Length(27), Constraint::Percentage(100)]);
 
     let bottom = bottom_of_rect(rect, stats_size::TOTAL_HEIGHT);
     frame.render_widget(Clear, bottom);
