@@ -56,20 +56,26 @@ impl Activity {
 }
 
 struct Stats {
-    total_month_time: Duration,
+    month_time: Duration,
     work_days: u32,
-    total_worked_days: u32,
+    workdays_worked: u32,
+    weekend_days_worked: u32,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
-    let mut total_month_time = Duration::ZERO;
-    let mut total_worked_days = 0;
+    let mut month_time = Duration::ZERO;
+    let mut workdays_worked = 0;
+    let mut weekend_worked_days = 0;
     let selected_id = app.selected_id();
     let items: SelectedVec<_> = app
         .activities()
         .filter(|(_, acts)| !acts.is_empty())
         .flat_map(|(date, acts)| {
-            total_worked_days += 1;
+            if is_weekend(date) {
+                weekend_worked_days += 1;
+            } else {
+                workdays_worked += 1;
+            }
             let is_selected = |a: &Activity| Some(a.id) == selected_id;
 
             let (total_time, some_none) = {
@@ -85,7 +91,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
                         }
                     })
                     .sum();
-                total_month_time += total_time;
+                month_time += total_time;
                 (fmt_duration(total_time), some_none)
             };
 
@@ -151,9 +157,10 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         state
     });
     Stats {
-        total_month_time,
+        month_time,
         work_days: app.n_workdays_so_far(),
-        total_worked_days,
+        workdays_worked,
+        weekend_days_worked: weekend_worked_days,
     }
 }
 
@@ -253,9 +260,10 @@ fn render_stats<B: Backend>(
     frame: &mut Frame<B>,
     rect: Rect,
     Stats {
-        total_month_time,
+        month_time,
         work_days,
-        total_worked_days,
+        workdays_worked,
+        weekend_days_worked,
     }: Stats,
 ) {
     let block = Block::default()
@@ -266,26 +274,26 @@ fn render_stats<B: Backend>(
     let table = Table::new(vec![
         Row::new([
             Span::styled("Total time this month: ", legend_style),
-            Span::raw(fmt_duration(total_month_time)),
+            Span::raw(fmt_duration(month_time)),
         ]),
         Row::new([
             Span::styled("Average time per work day: ", legend_style),
             Span::raw(fmt_duration(if work_days == 0 {
                 Duration::seconds(0)
             } else {
-                total_month_time / work_days
+                month_time / work_days
             })),
         ]),
         {
-            let overtime = total_month_time - Duration::hours((work_days * 8).into());
+            let overtime = month_time - Duration::hours((work_days * 8).into());
             let (legend, dur, legend_style) = if overtime.is_negative() {
                 (
-                    "Undertime hours",
+                    "Undertime hours:",
                     overtime * -1,
                     legend_style.fg(Color::Red),
                 )
             } else {
-                ("Overtime hours", overtime, legend_style.fg(Color::Green))
+                ("Overtime hours:", overtime, legend_style.fg(Color::Green))
             };
             Row::new([
                 Span::styled(legend, legend_style),
@@ -293,12 +301,17 @@ fn render_stats<B: Backend>(
             ])
         },
         Row::new([
-            Span::styled("Total work days (not counting weekends): ", legend_style),
+            Span::styled("Total work days: ", legend_style),
             Span::raw(work_days.to_string()),
         ]),
         Row::new([
-            Span::styled("Total worked days (counting weekends): ", legend_style),
-            Span::raw(total_worked_days.to_string()),
+            Span::styled("Total worked days (normal + weekends): ", legend_style),
+            Span::raw(format!(
+                "{} + {} = {}",
+                workdays_worked,
+                weekend_days_worked,
+                workdays_worked + weekend_days_worked
+            )),
         ]),
     ])
     .block(block)
