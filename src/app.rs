@@ -311,6 +311,9 @@ impl App {
         if let Some(last) = self.selected_activity().and_then(|a| a.end_time) {
             to_paste.start_time = last;
         }
+        if let Some(last) = self.selected_activity().map(|a| a.day) {
+            to_paste.day = last;
+        }
         to_paste.end_time = None;
         self.add_activity(to_paste);
         let _ = self.save_to(&self.backup);
