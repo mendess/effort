@@ -44,7 +44,13 @@ impl State {
     }
 
     pub fn add(&mut self, a: Activity) -> Option<Activity> {
-        self.0.entry(Reverse(a.day)).or_default().add(a)
+        let old = self
+            .0
+            .values_mut()
+            .find_map(|v| v.find_by_id(a.id))
+            .map(ActivityVecGuard::delete);
+        self.0.entry(Reverse(a.day)).or_default().add(a);
+        old
     }
 }
 

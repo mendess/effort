@@ -60,6 +60,12 @@ pub struct ActivityVecGuard<'v> {
     i: usize,
 }
 
+impl ActivityVecGuard<'_> {
+    pub fn delete(self) -> Activity {
+        self.vec.remove(self.i).unwrap()
+    }
+}
+
 impl<'v> Deref for ActivityVecGuard<'v> {
     type Target = Activity;
 
