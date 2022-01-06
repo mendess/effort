@@ -308,13 +308,14 @@ impl App {
             None => return Err("clipboard is empty"),
         };
         to_paste.id = ActivityId::default();
+        let length = to_paste.end_time.map(|e| e - to_paste.start_time);
         if let Some(selected) = self.selected_activity() {
             if let Some(end_time) = selected.end_time {
                 to_paste.start_time = end_time;
             }
             to_paste.day = selected.day;
         }
-        to_paste.end_time = None;
+        to_paste.end_time = length.map(|l| to_paste.start_time + l);
         self.add_activity(to_paste);
         let _ = self.save_to(&self.backup);
         Ok(())
