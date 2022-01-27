@@ -4,7 +4,7 @@ mod state;
 
 use std::{
     cmp::Reverse,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{self, Cursor},
     iter::successors,
@@ -15,25 +15,40 @@ pub use activity::{load_activities, store_activities, Activity, ActivityBeingBui
 use history::{Action, History};
 pub use state::ActivityVec;
 use state::State;
-use time::{macros::format_description, Date};
+use time::{macros::format_description, Date, OffsetDateTime};
 
 use crate::util::{fmt_duration, is_weekend};
 
-use self::activity::ActivityId;
+use self::activity::{load_days_off, parse_day, store_days_off, ActivityId};
+
+pub enum PopUp {
+    EditingActivity(ActivityBeingBuilt),
+    DaysOff {
+        selected: usize,
+        new_day_off: Option<String>,
+    },
+}
 
 pub struct App {
     filename: String,
     backup: String,
     selected: Option<(Date, usize)>,
     activities: State,
-    new_activity: Option<ActivityBeingBuilt>,
+    days_off: BTreeSet<Reverse<Date>>,
+    pop_up: Option<PopUp>,
     show_stats: bool,
     history: History,
     clipboard: Option<Activity>,
 }
 
 impl App {
-    pub fn new(filename: String, activities: Vec<Activity>) -> Self {
+    pub fn load(p: String) -> io::Result<Self> {
+        let acts = load_activities(&p)?;
+        let days_off = load_days_off(&p)?;
+        Ok(Self::new(p, acts, days_off))
+    }
+
+    pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
         Self {
             backup: format!("{}.bck", filename),
             filename,
@@ -48,7 +63,8 @@ impl App {
                     },
                 )
                 .into(),
-            new_activity: None,
+            days_off: days_off.into_iter().map(Reverse).collect(),
+            pop_up: None,
             show_stats: false,
             history: History::default(),
             clipboard: None,
@@ -149,19 +165,24 @@ impl App {
 
     pub fn create_new_activity(&mut self) {
         let last_time = self.selected_activity().and_then(|a| a.end_time);
-        self.new_activity = Some(ActivityBeingBuilt::new(last_time));
+        self.pop_up = Some(PopUp::EditingActivity(ActivityBeingBuilt::new(last_time)));
     }
 
     pub fn editing(&self) -> bool {
-        matches!(self.new_activity.as_ref().map(|a| a.editing), Some(true))
+        matches!(
+            self.pop_up
+                .as_ref()
+                .map(|a| matches!(a, PopUp::EditingActivity(a) if a.editing)),
+            Some(true)
+        )
     }
 
-    pub fn new_activity(&self) -> &Option<ActivityBeingBuilt> {
-        &self.new_activity
+    pub fn pop_up(&self) -> &Option<PopUp> {
+        &self.pop_up
     }
 
-    pub fn new_activity_mut(&mut self) -> &mut Option<ActivityBeingBuilt> {
-        &mut self.new_activity
+    pub fn pop_up_mut(&mut self) -> &mut Option<PopUp> {
+        &mut self.pop_up
     }
 
     pub fn toggle_stats(&mut self) {
@@ -205,7 +226,13 @@ impl App {
 
     pub fn save_to<P: AsRef<Path>>(&self, p: P) -> io::Result<()> {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
-        File::create(p.as_ref()).and_then(|f| store_activities(f, acts))
+        File::create(p.as_ref()).and_then(|f| store_activities(f, acts))?;
+        if !self.days_off.is_empty() {
+            File::create(format!("{}-off", p.as_ref().display()))
+                .and_then(|f| store_days_off(f, self.days_off.iter().map(|d| &d.0)))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn export(&self) -> io::Result<()> {
@@ -243,7 +270,7 @@ impl App {
     }
 
     pub fn cancel_edit(&mut self) {
-        self.new_activity = None
+        self.pop_up = None
     }
 
     pub fn yank_selected(&mut self) -> bool {
@@ -254,6 +281,65 @@ impl App {
         } else {
             false
         }
+    }
+
+    pub fn show_days_off(&mut self) {
+        self.pop_up = Some(PopUp::DaysOff {
+            selected: 0,
+            new_day_off: None,
+        })
+    }
+
+    pub fn hide_days_off(&mut self) {
+        if matches!(self.pop_up, Some(PopUp::DaysOff { .. })) {
+            self.pop_up = None
+        }
+    }
+
+    pub fn n_days_off(&self) -> usize {
+        self.days_off.len()
+    }
+
+    pub fn n_days_off_up_to_today(&self) -> usize {
+        let today = OffsetDateTime::now_local()
+            .unwrap_or_else(|_| OffsetDateTime::now_utc())
+            .date();
+        self.days_off.iter().filter(|d| d.0 <= today).count()
+    }
+
+    pub fn submit_new_day_off(&mut self) -> Result<(), &'static str> {
+        match &self.pop_up {
+            Some(PopUp::DaysOff {
+                new_day_off: Some(d),
+                selected,
+            }) => {
+                let date = parse_day(d)?;
+                let selected = *selected;
+                self.add_day_off(date)?;
+                self.pop_up = Some(PopUp::DaysOff {
+                    selected,
+                    new_day_off: None,
+                });
+                let _ = self.save_to(&self.backup);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn add_day_off(&mut self, date: Date) -> Result<(), &'static str> {
+        if self.activities.contains_key(&Reverse(date)) {
+            Err("you worked that day, can't take it off")
+        } else if is_weekend(&date) {
+            Err("can't take weekends off")
+        } else {
+            self.days_off.insert(Reverse(date));
+            Ok(())
+        }
+    }
+
+    pub fn days_off(&self) -> impl Iterator<Item = &Date> {
+        self.days_off.iter().map(|d| &d.0)
     }
 }
 
@@ -273,18 +359,20 @@ impl App {
             Some(acts) => acts,
             None => return,
         };
-        self.new_activity = Some((act, last.and_then(|a| a.end_time)).into());
+        self.pop_up = Some(PopUp::EditingActivity(
+            (act, last.and_then(|a| a.end_time)).into(),
+        ));
         let _ = self.save_to(&self.backup);
     }
 
     /// Submit a currently being edited activity
     pub fn submit_activity(&mut self) -> Result<(), &'static str> {
-        let to_submit: Activity = match &self.new_activity {
-            Some(n) => n.try_into()?,
-            None => return Ok(()),
+        let to_submit: Activity = match &self.pop_up {
+            Some(PopUp::EditingActivity(n)) => n.try_into()?,
+            _ => return Ok(()),
         };
         self.add_activity(to_submit);
-        self.new_activity = None;
+        self.pop_up = None;
         let _ = self.save_to(&self.backup);
         Ok(())
     }

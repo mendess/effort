@@ -4,6 +4,7 @@ mod selected_vec;
 mod ui;
 mod util;
 
+use app::PopUp;
 use combo_buffer::ComboBuffer;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -42,8 +43,7 @@ fn main() -> anyhow::Result<()> {
         .filter(|s| s == "-e" || s == "--export")
         .is_some();
 
-    let activities = app::load_activities(&path)?;
-    let mut app = App::new(path, activities);
+    let mut app = App::load(path)?;
     if export {
         match app.export() {
             Ok(()) => println!("exported!"),
@@ -82,8 +82,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                     return Ok(());
                 }
             }
-            match app.new_activity_mut() {
-                Some(new) => {
+            let n_days_off = app.n_days_off();
+            match app.pop_up_mut() {
+                Some(PopUp::EditingActivity(new)) => {
                     combo_buffer.reset();
                     if new.editing {
                         match key.code {
@@ -116,6 +117,33 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         }
                     }
                 }
+                Some(app::PopUp::DaysOff {
+                    selected,
+                    new_day_off,
+                }) => {
+                    if let Some(new_day_off) = new_day_off {
+                        match key.code {
+                            KeyCode::Char(c) => new_day_off.push(c),
+                            KeyCode::Backspace => {
+                                new_day_off.pop();
+                            }
+                            KeyCode::Enter => {
+                                if let Err(msg) = app.submit_new_day_off() {
+                                    info_popup = Some(Err(msg.into()))
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('k') => *selected = selected.saturating_sub(1),
+                            KeyCode::Char('j') => *selected = (*selected + 1) % n_days_off,
+                            KeyCode::Char('o') => *new_day_off = Some(String::new()),
+                            KeyCode::Char('f') | KeyCode::Esc => app.hide_days_off(),
+                            _ => {}
+                        }
+                    }
+                }
                 None => {
                     match key.code {
                         KeyCode::Char('k') => app.previous(),
@@ -126,6 +154,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => app.redo(),
                         KeyCode::Char('e') => app.edit_activity(),
                         KeyCode::Char('G') => app.select_last(),
+                        KeyCode::Char('f') => app.show_days_off(),
                         KeyCode::Char('p') => {
                             if let Err(msg) = app.paste() {
                                 info_popup = Some(Err(msg.into()))

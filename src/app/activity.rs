@@ -1,13 +1,15 @@
 use std::{
     fs::File,
-    io::{self, BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
     marker::PhantomData,
     path::Path,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
-use time::{Date, Month, OffsetDateTime, Time};
+use time::{
+    format_description::FormatItem, macros::format_description, Date, Month, OffsetDateTime, Time,
+};
 
 use crate::util::time_fmt::{DATE_FMT, TIME_FMT};
 
@@ -170,7 +172,7 @@ fn parse_time(s: &str, assume_now: bool, last_time: Option<Time>) -> Result<Time
         .map_err(|_| "failed to parse time: hour or minute out of bounds")
 }
 
-fn parse_day(s: &str) -> Result<Date, &'static str> {
+pub fn parse_day(s: &str) -> Result<Date, &'static str> {
     let mut today = OffsetDateTime::now_local()
         .unwrap_or_else(|_| OffsetDateTime::now_utc())
         .date();
@@ -243,12 +245,33 @@ pub struct Activity {
 }
 
 pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
-    match File::open(path) {
+    match File::open(&path) {
         Ok(f) => {
             let file = BufReader::new(f);
             Ok(csv::Reader::from_reader(file)
                 .deserialize::<Activity>()
                 .collect::<Result<Vec<_>, _>>()?)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(vec![]),
+        Err(e) => Err(e),
+    }
+}
+
+const FMT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
+
+pub fn load_days_off<P: AsRef<Path>>(path: P) -> io::Result<Vec<Date>> {
+    match File::open(format!("{}-off", path.as_ref().display())) {
+        Ok(mut f) => {
+            let mut s = String::new();
+            f.read_to_string(&mut s)?;
+            let dates = s
+                .split('\n')
+                .filter(|l| !l.is_empty())
+                .map(|l| {
+                    Date::parse(l, FMT).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(dates)
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(vec![]),
         Err(e) => Err(e),
@@ -264,6 +287,24 @@ where
     let mut writer = csv::Writer::from_writer(file);
     for a in activities {
         writer.serialize(a)?;
+    }
+    Ok(())
+}
+
+pub fn store_days_off<'a, I, W>(writer: W, days_off: I) -> io::Result<()>
+where
+    I: Iterator<Item = &'a Date>,
+    W: Write,
+{
+    use time::error::Format;
+    let mut writer = BufWriter::new(writer);
+    for d in days_off {
+        match d.format_into(&mut writer, FMT) {
+            Ok(_) => {}
+            Err(Format::StdIo(e)) => return Err(e),
+            Err(e) => panic!("{}", e),
+        }
+        writeln!(writer)?;
     }
     Ok(())
 }

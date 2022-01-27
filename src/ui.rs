@@ -6,12 +6,15 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
+    widgets::{
+        Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table,
+        TableState,
+    },
     Frame,
 };
 
 use crate::{
-    app::{Activity, ActivityBeingBuilt, App, Selected},
+    app::{Activity, ActivityBeingBuilt, App, PopUp, Selected},
     selected_vec::SelectedVec,
     util::{
         fmt_duration, is_weekend, size_slice,
@@ -60,6 +63,7 @@ struct Stats {
     work_days: u32,
     workdays_worked: u32,
     weekend_days_worked: u32,
+    days_off: u32,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
@@ -161,6 +165,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         work_days: app.n_workdays_so_far(),
         workdays_worked,
         weekend_days_worked: weekend_worked_days,
+        days_off: app.n_days_off_up_to_today() as u32,
     }
 }
 
@@ -168,29 +173,39 @@ pub type InfoPopup = Option<Result<Cow<'static, str>, Cow<'static, str>>>;
 
 pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopup) {
     let main = frame.size();
-    if let Some(new) = app.new_activity() {
-        render_table(frame, main, app);
-        render_new_activity(frame, main, new);
-    } else {
-        let stats_height = app
-            .show_stats()
-            .then(|| frame.size().height.checked_sub(stats_size::TOTAL_HEIGHT))
-            .flatten();
-        match stats_height {
-            Some(height) => {
-                let layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(height),
-                        Constraint::Length(stats_size::TOTAL_HEIGHT),
-                    ])
-                    .split(main);
+    match app.pop_up() {
+        Some(PopUp::EditingActivity(new)) => {
+            render_table(frame, main, app);
+            render_new_activity(frame, main, new);
+        }
+        Some(PopUp::DaysOff {
+            selected,
+            new_day_off,
+        }) => {
+            render_table(frame, main, app);
+            render_days_off(frame, main, app, *selected, new_day_off);
+        }
+        None => {
+            let stats_height = app
+                .show_stats()
+                .then(|| frame.size().height.checked_sub(stats_size::TOTAL_HEIGHT))
+                .flatten();
+            match stats_height {
+                Some(height) => {
+                    let layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([
+                            Constraint::Length(height),
+                            Constraint::Length(stats_size::TOTAL_HEIGHT),
+                        ])
+                        .split(main);
 
-                let stats = render_table(frame, layout[0], app);
-                render_stats(frame, layout[1], stats);
-            }
-            _ => {
-                render_table(frame, main, app);
+                    let stats = render_table(frame, layout[0], app);
+                    render_stats(frame, layout[1], stats);
+                }
+                _ => {
+                    render_table(frame, main, app);
+                }
             }
         }
     }
@@ -253,7 +268,7 @@ fn render_new_activity<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &Activ
 }
 
 mod stats_size {
-    pub(super) const TOTAL_HEIGHT: u16 = 7;
+    pub(super) const TOTAL_HEIGHT: u16 = 8;
 }
 
 fn render_stats<B: Backend>(
@@ -264,6 +279,7 @@ fn render_stats<B: Backend>(
         work_days,
         workdays_worked,
         weekend_days_worked,
+        days_off,
     }: Stats,
 ) {
     let block = Block::default()
@@ -285,7 +301,8 @@ fn render_stats<B: Backend>(
             })),
         ]),
         {
-            let overtime = month_time - Duration::hours((work_days * 8).into());
+            let overtime =
+                month_time - Duration::hours(((work_days.saturating_sub(days_off)) * 8).into());
             let (legend, dur, legend_style) = if overtime.is_negative() {
                 (
                     "Undertime hours:",
@@ -320,6 +337,10 @@ fn render_stats<B: Backend>(
                 Span::raw(")"),
             ]),
         ]),
+        Row::new([
+            Span::styled("Days off: ", legend_style),
+            Span::raw(days_off.to_string()),
+        ]),
     ])
     .block(block)
     .widths(&[Constraint::Length(27), Constraint::Percentage(100)]);
@@ -348,4 +369,65 @@ fn render_info<B: Backend>(frame: &mut Frame<B>, rect: Rect, title: &str, s: &st
         ),
         rect,
     );
+}
+
+mod new_day_off_sizes {
+    pub(super) const NUM_WIDGETS: u16 = 1;
+    pub(super) const WIDGET_HEIGHT: u16 = 3;
+    pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
+}
+
+fn render_days_off<B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    app: &App,
+    selected: usize,
+    new_day_off: &Option<String>,
+) {
+    let smaller = Rect {
+        x: rect.x + 5,
+        y: rect.y + 5,
+        width: rect.width.saturating_sub(10),
+        height: rect.height.saturating_sub(10),
+    };
+    frame.render_widget(Clear, smaller);
+    let items = List::new(
+        app.days_off()
+            .map(|d| d.format(DATE_FMT_FULL).unwrap())
+            .map(ListItem::new)
+            .collect::<Vec<_>>(),
+    )
+    .block(Block::default().borders(Borders::ALL).title("days off"))
+    .highlight_style(
+        Style::default()
+            // .bg(Color::LightGreen)
+            // .fg(Color::Black)
+            .add_modifier(Modifier::BOLD),
+    )
+    .highlight_symbol("> ");
+
+    frame.render_stateful_widget(items, smaller, &mut {
+        let mut state = ListState::default();
+        state.select(Some(selected));
+        state
+    });
+
+    if let Some(new_day_off) = new_day_off {
+        let bottom = bottom_of_rect(smaller, new_day_off_sizes::TOTAL_HEIGHT);
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                repeat(Constraint::Length(new_day_off_sizes::WIDGET_HEIGHT))
+                    .take(new_act_sizes::NUM_WIDGETS.into())
+                    .collect::<Vec<_>>(),
+            )
+            .split(bottom);
+        frame.render_widget(Clear, bottom);
+        [Paragraph::new(new_day_off.clone())
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL).title("date"))]
+        .into_iter()
+        .zip(&chunks)
+        .for_each(|(a, c)| frame.render_widget(a, *c));
+    }
 }
