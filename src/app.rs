@@ -71,7 +71,7 @@ impl App {
         }
     }
 
-    pub fn n_workdays_so_far(&self) -> u32 {
+    pub fn n_workdays_so_far(&self) -> u16 {
         let mut iter = self.activities.iter();
         let last = match iter.next() {
             Some((d, _)) => d.0,
@@ -81,10 +81,10 @@ impl App {
             Some((d, _)) => d.0,
             None => return 1,
         };
-        let mut counter = 0;
+        let mut counter = 0u16;
         while first <= last {
             if !is_weekend(&first) {
-                counter += 1;
+                counter = counter.checked_add(1).expect("that's too many days bro");
             }
             first = first.next_day().unwrap();
         }
@@ -300,11 +300,16 @@ impl App {
         self.days_off.len()
     }
 
-    pub fn n_days_off_up_to_today(&self) -> usize {
+    pub fn n_days_off_up_to_today(&self) -> u16 {
         let today = OffsetDateTime::now_local()
             .unwrap_or_else(|_| OffsetDateTime::now_utc())
             .date();
-        self.days_off.iter().filter(|d| d.0 <= today).count()
+        self.days_off
+            .iter()
+            .filter(|d| d.0 <= today)
+            .count()
+            .try_into()
+            .expect("that's too many days off bro")
     }
 
     pub fn submit_new_day_off(&mut self) -> Result<(), &'static str> {

@@ -60,10 +60,10 @@ impl Activity {
 
 struct Stats {
     month_time: Duration,
-    work_days: u32,
+    work_days: u16,
     workdays_worked: u32,
     weekend_days_worked: u32,
-    days_off: u32,
+    days_off: u16,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
@@ -165,7 +165,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         work_days: app.n_workdays_so_far(),
         workdays_worked,
         weekend_days_worked: weekend_worked_days,
-        days_off: app.n_days_off_up_to_today() as u32,
+        days_off: app.n_days_off_up_to_today(),
     }
 }
 
@@ -287,6 +287,7 @@ fn render_stats<B: Backend>(
         .border_type(BorderType::Thick)
         .title("Stats");
     let legend_style = Style::default().add_modifier(Modifier::BOLD);
+    let worked_days = work_days.saturating_sub(days_off);
     let table = Table::new(vec![
         Row::new([
             Span::styled("Total time this month: ", legend_style),
@@ -294,15 +295,14 @@ fn render_stats<B: Backend>(
         ]),
         Row::new([
             Span::styled("Average time per work day: ", legend_style),
-            Span::raw(fmt_duration(if work_days == 0 {
-                Duration::seconds(0)
-            } else {
-                month_time / work_days
-            })),
+            Span::raw(fmt_duration(
+                month_time
+                    .checked_div(worked_days.into())
+                    .unwrap_or_default(),
+            )),
         ]),
         {
-            let overtime =
-                month_time - Duration::hours(((work_days.saturating_sub(days_off)) * 8).into());
+            let overtime = month_time - Duration::hours((worked_days * 8).into());
             let (legend, dur, legend_style) = if overtime.is_negative() {
                 (
                     "Undertime hours:",
