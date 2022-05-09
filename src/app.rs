@@ -31,7 +31,6 @@ pub enum PopUp {
 
 pub struct App {
     filename: String,
-    backup: String,
     selected: Option<(Date, usize)>,
     activities: State,
     days_off: BTreeSet<Reverse<Date>>,
@@ -50,7 +49,6 @@ impl App {
 
     pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
         Self {
-            backup: format!("{}.bck", filename),
             filename,
             selected: None,
             activities: activities
@@ -325,7 +323,7 @@ impl App {
                     selected,
                     new_day_off: None,
                 });
-                let _ = self.save_to(&self.backup);
+                let _ = self.save_to(&self.filename);
                 Ok(())
             }
             _ => Ok(()),
@@ -367,7 +365,7 @@ impl App {
         self.pop_up = Some(PopUp::EditingActivity(
             (act, last.and_then(|a| a.end_time)).into(),
         ));
-        let _ = self.save_to(&self.backup);
+        let _ = self.save_to(&self.filename);
     }
 
     /// Submit a currently being edited activity
@@ -378,7 +376,7 @@ impl App {
         };
         self.add_activity(to_submit);
         self.pop_up = None;
-        let _ = self.save_to(&self.backup);
+        let _ = self.save_to(&self.filename);
         Ok(())
     }
 
@@ -392,7 +390,7 @@ impl App {
             self.clipboard = Some(act.clone());
             self.history.frwd(Action::DeleteActivity(act))
         }
-        let _ = self.save_to(&self.backup);
+        let _ = self.save_to(&self.filename);
     }
 
     pub fn paste(&mut self) -> Result<(), &'static str> {
@@ -410,7 +408,7 @@ impl App {
         }
         to_paste.end_time = length.map(|l| to_paste.start_time + l);
         self.add_activity(to_paste);
-        let _ = self.save_to(&self.backup);
+        let _ = self.save_to(&self.filename);
         Ok(())
     }
 
@@ -425,24 +423,18 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         println!("Auto saving file");
-        match self.save() {
-            Err(e) => {
-                eprintln!("Fatal error writing file '{}'!!", self.filename);
-                eprintln!("{:?}", e);
-                let mut s = Vec::new();
-                let c = Cursor::new(&mut s);
-                match store_activities(c, self.activities.iter().flat_map(|(_, acts)| acts.iter()))
-                {
-                    Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
-                    Err(e) => {
-                        eprintln!("Failed to serialize csv in memory: {:?}", e);
-                        eprintln!("{:?}", self.activities);
-                    }
-                };
-            }
-            Ok(()) => {
-                let _ = std::fs::remove_file(&self.backup);
-            }
+        if let Err(e) = self.save() {
+            eprintln!("Fatal error writing file '{}'!!", self.filename);
+            eprintln!("{:?}", e);
+            let mut s = Vec::new();
+            let c = Cursor::new(&mut s);
+            match store_activities(c, self.activities.iter().flat_map(|(_, acts)| acts.iter())) {
+                Ok(_) => eprintln!("{}", String::from_utf8_lossy(&s)),
+                Err(e) => {
+                    eprintln!("Failed to serialize csv in memory: {:?}", e);
+                    eprintln!("{:?}", self.activities);
+                }
+            };
         }
     }
 }
