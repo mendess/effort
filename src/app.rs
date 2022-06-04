@@ -1,4 +1,5 @@
 mod activity;
+mod config;
 mod history;
 mod state;
 
@@ -20,13 +21,21 @@ use time::{macros::format_description, Date, OffsetDateTime};
 use crate::util::{fmt_duration, is_weekend};
 
 use self::activity::{load_days_off, parse_day, store_days_off, ActivityId};
+use self::config::{load_config, store_config, Config};
+use crate::app::config::ConfigBeingBuilt;
+use crate::traits::EditingPopUp;
 
 pub enum PopUp {
-    EditingActivity(ActivityBeingBuilt),
+    EditingPopUp(Box<dyn EditingPopUp>),
     DaysOff {
         selected: usize,
         new_day_off: Option<String>,
     },
+}
+
+pub enum PopUpType {
+    Config,
+    EditActivity,
 }
 
 pub struct App {
@@ -38,16 +47,23 @@ pub struct App {
     show_stats: bool,
     history: History,
     clipboard: Option<Activity>,
+    pub config: Config,
 }
 
 impl App {
     pub fn load(p: String) -> io::Result<Self> {
         let acts = load_activities(&p)?;
         let days_off = load_days_off(&p)?;
-        Ok(Self::new(p, acts, days_off))
+        let config = load_config(&p)?;
+        Ok(Self::new(p, acts, days_off, config))
     }
 
-    pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
+    pub fn new(
+        filename: String,
+        activities: Vec<Activity>,
+        days_off: Vec<Date>,
+        config: Config,
+    ) -> Self {
         Self {
             filename,
             selected: None,
@@ -66,6 +82,7 @@ impl App {
             show_stats: false,
             history: History::default(),
             clipboard: None,
+            config,
         }
     }
 
@@ -163,14 +180,22 @@ impl App {
 
     pub fn create_new_activity(&mut self) {
         let last_time = self.selected_activity().and_then(|a| a.end_time);
-        self.pop_up = Some(PopUp::EditingActivity(ActivityBeingBuilt::new(last_time)));
+        self.pop_up = Some(PopUp::EditingPopUp(Box::new(ActivityBeingBuilt::new(
+            last_time,
+        ))));
+    }
+
+    pub fn edit_config(&mut self) {
+        self.pop_up = Some(PopUp::EditingPopUp(Box::new(ConfigBeingBuilt::new(
+            self.config,
+        ))));
     }
 
     pub fn editing(&self) -> bool {
         matches!(
             self.pop_up
                 .as_ref()
-                .map(|a| matches!(a, PopUp::EditingActivity(a) if a.editing)),
+                .map(|a| matches!(a, PopUp::EditingPopUp(a) if a.is_editing())),
             Some(true)
         )
     }
@@ -225,6 +250,8 @@ impl App {
     pub fn save_to<P: AsRef<Path>>(&self, p: P) -> io::Result<()> {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
         File::create(p.as_ref()).and_then(|f| store_activities(f, acts))?;
+        File::create(format!("{}-config", p.as_ref().display()))
+            .and_then(|f| store_config(f, self.config))?;
         if !self.days_off.is_empty() {
             File::create(format!("{}-off", p.as_ref().display()))
                 .and_then(|f| store_days_off(f, self.days_off.iter().map(|d| &d.0)))
@@ -310,6 +337,32 @@ impl App {
             .expect("that's too many days off bro")
     }
 
+    pub fn submit(&mut self) -> Result<(), &'static str> {
+        if let Some(PopUp::EditingPopUp(new)) = &self.pop_up() {
+            match new.popup_type() {
+                crate::app::PopUpType::Config => {
+                    let config: Config = (&**new)
+                        .as_any()
+                        .downcast_ref::<ConfigBeingBuilt>()
+                        .unwrap()
+                        .try_into()?;
+                    self.config = config;
+                }
+                crate::app::PopUpType::EditActivity => {
+                    let activity: Activity = (&**new)
+                        .as_any()
+                        .downcast_ref::<ActivityBeingBuilt>()
+                        .unwrap()
+                        .try_into()?;
+                    self.add_activity(activity);
+                }
+            }
+        }
+        self.pop_up = None;
+        let _ = self.save_to(&self.filename);
+        Ok(())
+    }
+
     pub fn submit_new_day_off(&mut self) -> Result<(), &'static str> {
         match &self.pop_up {
             Some(PopUp::DaysOff {
@@ -362,22 +415,9 @@ impl App {
             Some(acts) => acts,
             None => return,
         };
-        self.pop_up = Some(PopUp::EditingActivity(
-            (act, last.and_then(|a| a.end_time)).into(),
-        ));
+        let act: ActivityBeingBuilt = (act, last.and_then(|a| a.end_time)).into();
+        self.pop_up = Some(PopUp::EditingPopUp(Box::new(act)));
         let _ = self.save_to(&self.filename);
-    }
-
-    /// Submit a currently being edited activity
-    pub fn submit_activity(&mut self) -> Result<(), &'static str> {
-        let to_submit: Activity = match &self.pop_up {
-            Some(PopUp::EditingActivity(n)) => n.try_into()?,
-            _ => return Ok(()),
-        };
-        self.add_activity(to_submit);
-        self.pop_up = None;
-        let _ = self.save_to(&self.filename);
-        Ok(())
     }
 
     /// Delete the currently selected activity

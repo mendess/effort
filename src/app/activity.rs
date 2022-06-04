@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     fs::File,
     io::{self, BufReader, BufWriter, Read, Write},
     marker::PhantomData,
@@ -11,6 +12,13 @@ use time::{
     format_description::FormatItem, macros::format_description, Date, Month, OffsetDateTime, Time,
 };
 
+use tui::{
+    style::{Color, Style},
+    widgets::{Block, Borders, Paragraph},
+};
+
+use crate::app::App;
+use crate::traits::EditingPopUp;
 use crate::util::time_fmt::{DATE_FMT, TIME_FMT};
 
 #[derive(Debug, Clone)]
@@ -66,22 +74,71 @@ impl ActivityBeingBuilt {
             editing: true,
         }
     }
+}
 
-    pub fn select_next(&mut self) {
+impl EditingPopUp for ActivityBeingBuilt {
+    fn select_next(&mut self) {
         self.selected = self.selected.next();
     }
 
-    pub fn select_prev(&mut self) {
+    fn select_prev(&mut self) {
         self.selected = self.selected.prev();
     }
 
-    pub fn selected_buf(&mut self) -> &mut String {
+    fn selected_buf(&mut self) -> &mut String {
         match self.selected {
             Selected::Action => &mut self.action,
             Selected::StartTime => &mut self.start_time,
             Selected::EndTime => &mut self.end_time,
             Selected::Day => &mut self.day,
         }
+    }
+
+    fn set_editing(&mut self, state: bool) {
+        self.editing = state;
+    }
+
+    fn submit(&self, app: &mut App) -> Result<(), &'static str> {
+        let to_submit: Activity = self.try_into()?;
+        app.add_activity(to_submit);
+        app.pop_up = None;
+        let _ = app.save_to(&app.filename);
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn is_editing(&self) -> bool {
+        self.editing
+    }
+
+    fn render(&self) -> Vec<tui::widgets::Paragraph<'_>> {
+        let mkparagraph = |title, buf, action| {
+            Paragraph::new(buf)
+                .style(if action == self.selected {
+                    let color = if self.editing {
+                        Color::Yellow
+                    } else {
+                        Color::Blue
+                    };
+                    Style::default().fg(color)
+                } else {
+                    Style::default()
+                })
+                .block(Block::default().borders(Borders::ALL).title(title))
+        };
+        vec![
+            mkparagraph("action", self.action.as_str(), Selected::Action),
+            mkparagraph("start time", &self.start_time, Selected::StartTime),
+            mkparagraph("end time", &self.end_time, Selected::EndTime),
+            mkparagraph("day", &self.day, Selected::Day),
+        ]
+    }
+
+    fn popup_type(&self) -> crate::app::PopUpType {
+        crate::app::PopUpType::EditActivity
     }
 }
 

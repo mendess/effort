@@ -16,6 +16,7 @@ use tui::{
 use crate::{
     app::{Activity, ActivityBeingBuilt, App, PopUp, Selected},
     selected_vec::SelectedVec,
+    traits::EditingPopUp,
     util::{
         fmt_duration, is_weekend, size_slice,
         time_fmt::{DATE_FMT_FULL, TIME_FMT},
@@ -64,6 +65,7 @@ struct Stats {
     workdays_worked: u32,
     weekend_days_worked: u32,
     days_off: u16,
+    work_day_hours: f32,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
@@ -166,6 +168,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         workdays_worked,
         weekend_days_worked: weekend_worked_days,
         days_off: app.n_days_off_up_to_today(),
+        work_day_hours: app.config.work_day_hours,
     }
 }
 
@@ -174,9 +177,9 @@ pub type InfoPopup = Option<Result<Cow<'static, str>, Cow<'static, str>>>;
 pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopup) {
     let main = frame.size();
     match app.pop_up() {
-        Some(PopUp::EditingActivity(new)) => {
+        Some(PopUp::EditingPopUp(new)) => {
             render_table(frame, main, app);
-            render_new_activity(frame, main, new);
+            render_new_popup(frame, main, &**new);
         }
         Some(PopUp::DaysOff {
             selected,
@@ -230,7 +233,7 @@ mod new_act_sizes {
     pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
 }
 
-fn render_new_activity<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &ActivityBeingBuilt) {
+fn render_new_popup<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &dyn EditingPopUp) {
     let bottom = bottom_of_rect(rect, new_act_sizes::TOTAL_HEIGHT);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -240,31 +243,11 @@ fn render_new_activity<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &Activ
                 .collect::<Vec<_>>(),
         )
         .split(bottom);
-    let mkparagraph = |title, buf, action| {
-        Paragraph::new(buf)
-            .style(if action == new.selected {
-                let color = if new.editing {
-                    Color::Yellow
-                } else {
-                    Color::Blue
-                };
-                Style::default().fg(color)
-            } else {
-                Style::default()
-            })
-            .block(Block::default().borders(Borders::ALL).title(title))
-    };
-
     frame.render_widget(Clear, bottom);
-    [
-        mkparagraph("action", new.action.as_str(), Selected::Action),
-        mkparagraph("start time", &new.start_time, Selected::StartTime),
-        mkparagraph("end time", &new.end_time, Selected::EndTime),
-        mkparagraph("day", &new.day, Selected::Day),
-    ]
-    .into_iter()
-    .zip(&chunks)
-    .for_each(|(a, c)| frame.render_widget(a, *c));
+    new.render()
+        .into_iter()
+        .zip(&chunks)
+        .for_each(|(a, c)| frame.render_widget(a, *c));
 }
 
 mod stats_size {
@@ -280,6 +263,7 @@ fn render_stats<B: Backend>(
         workdays_worked,
         weekend_days_worked,
         days_off,
+        work_day_hours,
     }: Stats,
 ) {
     let block = Block::default()
@@ -302,7 +286,9 @@ fn render_stats<B: Backend>(
             )),
         ]),
         {
-            let overtime = month_time - Duration::hours((worked_days * 8).into());
+            let work_day_mins = (work_day_hours * 60.0) as u16;
+            let otime = work_day_mins * worked_days;
+            let overtime = month_time - Duration::minutes(otime.into());
             let (legend, dur, legend_style) = if overtime.is_negative() {
                 (
                     "Undertime hours:",
