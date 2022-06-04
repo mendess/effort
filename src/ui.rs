@@ -14,7 +14,7 @@ use tui::{
 };
 
 use crate::{
-    app::{Activity, ActivityBeingBuilt, App, PopUp, Selected},
+    app::{Activity, App, PopUp},
     selected_vec::SelectedVec,
     traits::EditingPopUp,
     util::{

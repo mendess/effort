@@ -150,9 +150,15 @@ impl TryFrom<&ConfigBeingBuilt> for Config {
     fn try_from(builder: &ConfigBeingBuilt) -> Result<Self, Self::Error> {
         let work_day_hours = builder.work_day_hours.parse::<f32>();
         match work_day_hours {
-            Ok(wdh) => Ok(Config {
-                work_day_hours: wdh,
-            }),
+            Ok(wdh) => {
+                if wdh < 0.0 {
+                    Err("Work Hours need to be a positive number")
+                } else {
+                    Ok(Config {
+                        work_day_hours: wdh,
+                    })
+                }
+            }
             Err(_) => Err("Please Provide a number"),
         }
     }
