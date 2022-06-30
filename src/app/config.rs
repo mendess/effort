@@ -28,7 +28,7 @@ impl Default for Config {
 }
 
 pub fn load_config<P: AsRef<Path>>(path: P) -> io::Result<Config> {
-    match File::open(format!("{}-config", path.as_ref().display())) {
+    match File::open(path) {
         Ok(f) => {
             let file = BufReader::new(f);
             Ok(serde_json::from_reader(file).unwrap_or_default())

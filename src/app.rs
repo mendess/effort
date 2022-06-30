@@ -9,7 +9,7 @@ use std::{
     fs::File,
     io::{self, Cursor},
     iter::successors,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 pub use activity::{load_activities, store_activities, Activity, ActivityBeingBuilt, Selected};
@@ -40,6 +40,7 @@ pub enum PopUpType {
 
 pub struct App {
     filename: String,
+    conf_path: PathBuf,
     selected: Option<(Date, usize)>,
     activities: State,
     days_off: BTreeSet<Reverse<Date>>,
@@ -54,18 +55,16 @@ impl App {
     pub fn load(p: String) -> io::Result<Self> {
         let acts = load_activities(&p)?;
         let days_off = load_days_off(&p)?;
-        let config = load_config(&p)?;
-        Ok(Self::new(p, acts, days_off, config))
+        Ok(Self::new(p, acts, days_off))
     }
 
-    pub fn new(
-        filename: String,
-        activities: Vec<Activity>,
-        days_off: Vec<Date>,
-        config: Config,
-    ) -> Self {
+    pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
+        let mut conf_path = dirs::config_dir().unwrap();
+        conf_path.push("effort_config");
+        let config = load_config(conf_path.clone()).unwrap_or_default();
         Self {
             filename,
+            conf_path,
             selected: None,
             activities: activities
                 .into_iter()
@@ -250,8 +249,7 @@ impl App {
     pub fn save_to<P: AsRef<Path>>(&self, p: P) -> io::Result<()> {
         let acts = self.activities.iter().flat_map(|(_, acts)| acts.iter());
         File::create(p.as_ref()).and_then(|f| store_activities(f, acts))?;
-        File::create(format!("{}-config", p.as_ref().display()))
-            .and_then(|f| store_config(f, self.config))?;
+        File::create(self.conf_path.clone()).and_then(|f| store_config(f, self.config))?;
         if !self.days_off.is_empty() {
             File::create(format!("{}-off", p.as_ref().display()))
                 .and_then(|f| store_days_off(f, self.days_off.iter().map(|d| &d.0)))
