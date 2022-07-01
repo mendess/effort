@@ -1,6 +1,7 @@
 mod app;
 mod combo_buffer;
 mod selected_vec;
+mod traits;
 mod ui;
 mod util;
 
@@ -84,9 +85,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
             }
             let n_days_off = app.n_days_off();
             match app.pop_up_mut() {
-                Some(PopUp::EditingActivity(new)) => {
+                Some(PopUp::EditingPopUp(new)) => {
                     combo_buffer.reset();
-                    if new.editing {
+                    if new.is_editing() {
                         match key.code {
                             KeyCode::Char(c) => new.selected_buf().push(c),
                             KeyCode::Backspace => {
@@ -94,9 +95,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                             }
                             KeyCode::Tab => new.select_next(),
                             KeyCode::BackTab => new.select_prev(),
-                            KeyCode::Esc => new.editing = false,
+                            KeyCode::Esc => new.set_editing(false),
                             KeyCode::Enter => {
-                                if let Err(msg) = app.submit_activity() {
+                                if let Err(msg) = app.submit() {
                                     info_popup = Some(Err(msg.into()))
                                 }
                             }
@@ -104,12 +105,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         }
                     } else {
                         match key.code {
-                            KeyCode::Char('i') => new.editing = true,
+                            KeyCode::Char('i') => new.set_editing(true),
                             KeyCode::Char('k') => new.select_prev(),
                             KeyCode::Char('j') => new.select_next(),
                             KeyCode::Esc => app.cancel_edit(),
                             KeyCode::Enter => {
-                                if let Err(msg) = app.submit_activity() {
+                                if let Err(msg) = app.submit() {
                                     info_popup = Some(Err(msg.into()))
                                 }
                             }
@@ -150,6 +151,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('j') => app.next(),
                         KeyCode::Char('s') => app.toggle_stats(),
                         KeyCode::Char('o') => app.create_new_activity(),
+                        KeyCode::Char('?') => app.edit_config(),
                         KeyCode::Char('u') => app.undo(),
                         KeyCode::Char('r') if key.modifiers == KeyModifiers::CONTROL => app.redo(),
                         KeyCode::Char('e') => app.edit_activity(),
