@@ -60,7 +60,7 @@ impl App {
 
     pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
         let mut conf_path = dirs::config_dir().unwrap();
-        conf_path.push("effort_config");
+        conf_path.push("effortrc");
         let config = load_config(conf_path.clone()).unwrap_or_default();
         Self {
             filename,
