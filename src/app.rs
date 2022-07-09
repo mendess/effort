@@ -16,7 +16,7 @@ pub use activity::{load_activities, store_activities, Activity, ActivityBeingBui
 use history::{Action, History};
 pub use state::ActivityVec;
 use state::State;
-use time::{macros::format_description, Date, OffsetDateTime};
+use time::{macros::format_description, Date, Duration, OffsetDateTime};
 
 use crate::util::{fmt_duration, is_weekend};
 
@@ -174,6 +174,22 @@ impl App {
             self.activities
                 .get(&Reverse(date))
                 .and_then(|day| day.get(index))
+        })
+    }
+
+    pub fn selected_issue_total_time(&self) -> Option<Duration> {
+        self.selected_activity().and_then(|act| {
+            self.activities()
+                .flat_map(|(_, y)| y.iter())
+                .filter(|x| act.issue == x.issue)
+                .map(|x| x.end_time.map(|end_time| end_time - x.start_time))
+                .fold(None, |acc, x| match x {
+                    Some(z) => match acc {
+                        Some(a) => Some(a + z),
+                        None => Some(z),
+                    },
+                    _ => None,
+                })
         })
     }
 

@@ -26,6 +26,7 @@ use crate::{
 impl Activity {
     fn to_row(&self) -> Row {
         let action = self.action.clone();
+        let issue = self.issue.clone();
         let start = self.start_time.format(TIME_FMT).unwrap();
         let end = self
             .end_time
@@ -37,7 +38,7 @@ impl Activity {
             .map(fmt_duration)
             .unwrap_or_else(String::new);
 
-        Row::new([action, start, end, time_spent])
+        Row::new([action, issue, start, end, time_spent])
     }
 
     fn distance(&self, next: &Activity) -> Option<Row> {
@@ -66,6 +67,7 @@ struct Stats {
     weekend_days_worked: u32,
     days_off: u16,
     work_day_hours: f32,
+    time_spent_on_issue: Option<Duration>,
 }
 
 fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stats {
@@ -105,6 +107,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
                 Cell::from(date.format(DATE_FMT_FULL).unwrap()),
                 Cell::from(String::new()),
                 Cell::from(String::new()),
+                Cell::from(String::new()),
                 Cell::from(total_time).style(Style::default().fg(if some_none {
                     Color::Red
                 } else {
@@ -141,7 +144,13 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
     let (items, index) = items.into_parts();
 
     let items = Table::new(items)
-        .header(Row::new(["Action", "start time", "end time", "time spent"]))
+        .header(Row::new([
+            "Action",
+            "Issue",
+            "start time",
+            "end time",
+            "time spent",
+        ]))
         .block(Block::default())
         .highlight_style(
             Style::default()
@@ -152,6 +161,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         .highlight_symbol("> ")
         .widths(&[
             Constraint::Percentage(100),
+            Constraint::Length(13),
             Constraint::Length(13),
             Constraint::Length(11),
             Constraint::Length(13),
@@ -169,6 +179,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         weekend_days_worked: weekend_worked_days,
         days_off: app.n_days_off_up_to_today(),
         work_day_hours: app.config.work_day_hours,
+        time_spent_on_issue: app.selected_issue_total_time(),
     }
 }
 
@@ -228,7 +239,7 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopu
 }
 
 mod new_act_sizes {
-    pub(super) const NUM_WIDGETS: u16 = 4;
+    pub(super) const NUM_WIDGETS: u16 = 5;
     pub(super) const WIDGET_HEIGHT: u16 = 3;
     pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
 }
@@ -251,7 +262,7 @@ fn render_new_popup<B: Backend>(frame: &mut Frame<B>, rect: Rect, new: &dyn Edit
 }
 
 mod stats_size {
-    pub(super) const TOTAL_HEIGHT: u16 = 8;
+    pub(super) const TOTAL_HEIGHT: u16 = 9;
 }
 
 fn render_stats<B: Backend>(
@@ -264,6 +275,7 @@ fn render_stats<B: Backend>(
         weekend_days_worked,
         days_off,
         work_day_hours,
+        time_spent_on_issue,
     }: Stats,
 ) {
     let block = Block::default()
@@ -326,6 +338,14 @@ fn render_stats<B: Backend>(
         Row::new([
             Span::styled("Days off: ", legend_style),
             Span::raw(days_off.to_string()),
+        ]),
+        Row::new([
+            Span::styled("Time Spent On Issue: ", legend_style),
+            Span::raw(
+                time_spent_on_issue
+                    .map(fmt_duration)
+                    .unwrap_or_else(|| "None".to_owned()),
+            ),
         ]),
     ])
     .block(block)

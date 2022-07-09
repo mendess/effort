@@ -26,6 +26,7 @@ pub struct ActivityBeingBuilt {
     id: ActivityId,
     last_time: Option<Time>,
     pub action: String,
+    pub issue: String,
     pub start_time: String,
     pub end_time: String,
     pub day: String,
@@ -39,21 +40,24 @@ pub enum Selected {
     StartTime,
     EndTime,
     Day,
+    Issue,
 }
 
 impl Selected {
     pub fn next(self) -> Self {
         match self {
+            Self::Issue => Self::Action,
             Self::Action => Self::StartTime,
             Self::StartTime => Self::EndTime,
             Self::EndTime => Self::Day,
-            Self::Day => Self::Action,
+            Self::Day => Self::Issue,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Self::Action => Self::Day,
+            Self::Issue => Self::Day,
+            Self::Action => Self::Issue,
             Self::StartTime => Self::Action,
             Self::EndTime => Self::StartTime,
             Self::Day => Self::EndTime,
@@ -67,10 +71,11 @@ impl ActivityBeingBuilt {
             id: ActivityId::default(),
             last_time,
             action: String::new(),
+            issue: String::new(),
             start_time: String::default(),
             end_time: String::new(),
             day: String::new(),
-            selected: Selected::Action,
+            selected: Selected::Issue,
             editing: true,
         }
     }
@@ -88,6 +93,7 @@ impl EditingPopUp for ActivityBeingBuilt {
     fn selected_buf(&mut self) -> &mut String {
         match self.selected {
             Selected::Action => &mut self.action,
+            Selected::Issue => &mut self.issue,
             Selected::StartTime => &mut self.start_time,
             Selected::EndTime => &mut self.end_time,
             Selected::Day => &mut self.day,
@@ -130,6 +136,7 @@ impl EditingPopUp for ActivityBeingBuilt {
                 .block(Block::default().borders(Borders::ALL).title(title))
         };
         vec![
+            mkparagraph("issue", self.issue.as_str(), Selected::Issue),
             mkparagraph("action", self.action.as_str(), Selected::Action),
             mkparagraph("start time", &self.start_time, Selected::StartTime),
             mkparagraph("end time", &self.end_time, Selected::EndTime),
@@ -148,6 +155,7 @@ impl From<(&Activity, Option<Time>)> for ActivityBeingBuilt {
             id: a.id,
             last_time,
             action: a.action.clone(),
+            issue: a.issue.clone(),
             start_time: a.start_time.format(TIME_FMT).unwrap(),
             end_time: a
                 .end_time
@@ -183,6 +191,7 @@ impl TryFrom<&ActivityBeingBuilt> for Activity {
             },
             day: parse_day(&builder.day)?,
             action: builder.action.clone(),
+            issue: builder.issue.clone(),
             _m: PhantomData,
         })
     }
@@ -295,6 +304,7 @@ pub struct Activity {
     pub start_time: Time,
     pub end_time: Option<Time>,
     pub action: String,
+    pub issue: String,
     #[serde(skip_serializing, skip_deserializing, default)]
     pub id: ActivityId,
     #[serde(skip)]
