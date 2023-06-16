@@ -85,7 +85,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
                 weekend_worked_days += 1;
             } else if app.is_free_holiday(date) {
                 holiday_worked_days += 1;
-            } else{
+            } else {
                 workdays_worked += 1;
             }
             let is_selected = |a: &Activity| Some(a.id) == selected_id;
@@ -337,7 +337,10 @@ fn render_stats<B: Backend>(
         Row::new([
             Spans::from(vec![Span::styled("Total worked days: ", legend_style)]),
             Spans::from(vec![
-                Span::raw(format!("{} (", workdays_worked + weekend_days_worked + holiday_days_worked)),
+                Span::raw(format!(
+                    "{} (",
+                    workdays_worked + weekend_days_worked + holiday_days_worked
+                )),
                 Span::styled(
                     format!("{}", workdays_worked),
                     Style::default().fg(Color::Blue),

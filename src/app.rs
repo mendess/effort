@@ -104,7 +104,9 @@ impl App {
     pub fn is_free_holiday(&self, date: &time::Date) -> bool {
         if self.config.free_holidays {
             self.is_holiday(date)
-        } else { false}
+        } else {
+            false
+        }
     }
 
     pub fn n_workdays_so_far(&self) -> u16 {
