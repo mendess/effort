@@ -484,7 +484,7 @@ impl App {
     }
 
     pub fn holidays(&self) -> impl Iterator<Item = &Date> {
-        self.days_off.iter().map(|d| &d.0)
+        self.holidays.iter().map(|d| &d.0)
     }
 }
 
