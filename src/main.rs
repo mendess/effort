@@ -85,7 +85,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
             }
             let n_days_off = app.n_days_off();
             let n_holidays = app.n_holidays();
-            dbg!(n_holidays);
             match app.pop_up_mut() {
                 Some(PopUp::EditingPopUp(new)) => {
                     combo_buffer.reset();
