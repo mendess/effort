@@ -20,7 +20,7 @@ use time::{macros::format_description, Date, Duration, OffsetDateTime};
 
 use crate::util::{fmt_duration, is_weekend};
 
-use self::activity::{load_days_off, parse_day, store_days_off, ActivityId};
+use self::activity::{load_days_off, load_holidays, parse_day, store_list_dates, ActivityId};
 use self::config::{load_config, store_config, Config};
 use crate::app::config::ConfigBeingBuilt;
 use crate::traits::EditingPopUp;
@@ -30,6 +30,10 @@ pub enum PopUp {
     DaysOff {
         selected: usize,
         new_day_off: Option<String>,
+    },
+    Holidays {
+        selected: usize,
+        new_holiday: Option<String>,
     },
 }
 
@@ -44,6 +48,7 @@ pub struct App {
     selected: Option<(Date, usize)>,
     activities: State,
     days_off: BTreeSet<Reverse<Date>>,
+    holidays: BTreeSet<Reverse<Date>>,
     pop_up: Option<PopUp>,
     show_stats: bool,
     history: History,
@@ -55,10 +60,16 @@ impl App {
     pub fn load(p: String) -> io::Result<Self> {
         let acts = load_activities(&p)?;
         let days_off = load_days_off(&p)?;
-        Ok(Self::new(p, acts, days_off))
+        let holidays = load_holidays(&p)?;
+        Ok(Self::new(p, acts, days_off, holidays))
     }
 
-    pub fn new(filename: String, activities: Vec<Activity>, days_off: Vec<Date>) -> Self {
+    pub fn new(
+        filename: String,
+        activities: Vec<Activity>,
+        days_off: Vec<Date>,
+        holidays: Vec<Date>,
+    ) -> Self {
         let mut conf_path = dirs::config_dir().unwrap();
         conf_path.push("effortrc");
         let config = load_config(conf_path.clone()).unwrap_or_default();
@@ -77,12 +88,23 @@ impl App {
                 )
                 .into(),
             days_off: days_off.into_iter().map(Reverse).collect(),
+            holidays: holidays.into_iter().map(Reverse).collect(),
             pop_up: None,
             show_stats: false,
             history: History::default(),
             clipboard: None,
             config,
         }
+    }
+
+    pub fn is_holiday(&self, date: &time::Date) -> bool {
+        self.holidays.contains(&Reverse(*date))
+    }
+
+    pub fn is_free_holiday(&self, date: &time::Date) -> bool {
+        if self.config.free_holidays {
+            self.is_holiday(date)
+        } else { false}
     }
 
     pub fn n_workdays_so_far(&self) -> u16 {
@@ -268,10 +290,13 @@ impl App {
         File::create(self.conf_path.clone()).and_then(|f| store_config(f, self.config))?;
         if !self.days_off.is_empty() {
             File::create(format!("{}-off", p.as_ref().display()))
-                .and_then(|f| store_days_off(f, self.days_off.iter().map(|d| &d.0)))
-        } else {
-            Ok(())
+                .and_then(|f| store_list_dates(f, self.days_off.iter().map(|d| &d.0)))?;
         }
+        if !self.holidays.is_empty() {
+            File::create(format!("{}-holidays", p.as_ref().display()))
+                .and_then(|f| store_list_dates(f, self.holidays.iter().map(|d| &d.0)))?;
+        }
+        Ok(())
     }
 
     pub fn export(&self) -> io::Result<()> {
@@ -329,13 +354,30 @@ impl App {
         })
     }
 
+    pub fn show_holidays(&mut self) {
+        self.pop_up = Some(PopUp::Holidays {
+            selected: 0,
+            new_holiday: None,
+        })
+    }
+
     pub fn hide_days_off(&mut self) {
         if matches!(self.pop_up, Some(PopUp::DaysOff { .. })) {
             self.pop_up = None
         }
     }
 
+    pub fn hide_holidays(&mut self) {
+        if matches!(self.pop_up, Some(PopUp::Holidays { .. })) {
+            self.pop_up = None
+        }
+    }
+
     pub fn n_days_off(&self) -> usize {
+        self.days_off.len()
+    }
+
+    pub fn n_holidays(&self) -> usize {
         self.days_off.len()
     }
 
@@ -397,6 +439,26 @@ impl App {
         }
     }
 
+    pub fn submit_new_holiday(&mut self) -> Result<(), &'static str> {
+        match &self.pop_up {
+            Some(PopUp::Holidays {
+                new_holiday: Some(d),
+                selected,
+            }) => {
+                let date = parse_day(d)?;
+                let selected = *selected;
+                self.add_holiday(date)?;
+                self.pop_up = Some(PopUp::Holidays {
+                    selected,
+                    new_holiday: None,
+                });
+                let _ = self.save_to(&self.filename);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     pub fn add_day_off(&mut self, date: Date) -> Result<(), &'static str> {
         if self.activities.contains_key(&Reverse(date)) {
             Err("you worked that day, can't take it off")
@@ -408,7 +470,20 @@ impl App {
         }
     }
 
+    pub fn add_holiday(&mut self, date: Date) -> Result<(), &'static str> {
+        if self.activities.contains_key(&Reverse(date)) {
+            Err("you worked on a holiday?!")
+        } else {
+            self.days_off.insert(Reverse(date));
+            Ok(())
+        }
+    }
+
     pub fn days_off(&self) -> impl Iterator<Item = &Date> {
+        self.days_off.iter().map(|d| &d.0)
+    }
+
+    pub fn holidays(&self) -> impl Iterator<Item = &Date> {
         self.days_off.iter().map(|d| &d.0)
     }
 }

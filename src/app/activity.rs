@@ -327,7 +327,15 @@ pub fn load_activities<P: AsRef<Path>>(path: P) -> io::Result<Vec<Activity>> {
 const FMT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
 
 pub fn load_days_off<P: AsRef<Path>>(path: P) -> io::Result<Vec<Date>> {
-    match File::open(format!("{}-off", path.as_ref().display())) {
+    load_list_dates(format!("{}-off", path.as_ref().display()))
+}
+
+pub fn load_holidays<P: AsRef<Path>>(path: P) -> io::Result<Vec<Date>> {
+    load_list_dates(format!("{}-holidays", path.as_ref().display()))
+}
+
+pub fn load_list_dates<P: AsRef<Path>>(path: P) -> io::Result<Vec<Date>> {
+    match File::open(path) {
         Ok(mut f) => {
             let mut s = String::new();
             f.read_to_string(&mut s)?;
@@ -358,7 +366,7 @@ where
     Ok(())
 }
 
-pub fn store_days_off<'a, I, W>(writer: W, days_off: I) -> io::Result<()>
+pub fn store_list_dates<'a, I, W>(writer: W, days_off: I) -> io::Result<()>
 where
     I: Iterator<Item = &'a Date>,
     W: Write,
