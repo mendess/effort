@@ -474,7 +474,7 @@ impl App {
         if self.activities.contains_key(&Reverse(date)) {
             Err("you worked on a holiday?!")
         } else {
-            self.days_off.insert(Reverse(date));
+            self.holidays.insert(Reverse(date));
             Ok(())
         }
     }
