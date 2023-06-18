@@ -121,7 +121,7 @@ impl App {
         };
         let mut counter = 0u16;
         while first <= last {
-            if !is_weekend(&first) {
+            if !is_weekend(&first) && !self.is_free_holiday(&first){
                 counter = counter.checked_add(1).expect("that's too many days bro");
             }
             first = first.next_day().unwrap();
