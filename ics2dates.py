@@ -2,7 +2,6 @@
 # Can be used to import a ics with the national holidays for example
 import ics
 from sys import argv
-from datetime import datetime
 
 if len(argv) != 3:
     print(f"USAGE: {argv[0]} ics_file output_file")
