@@ -84,6 +84,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                 }
             }
             let n_days_off = app.n_days_off();
+            let n_holidays = app.n_holidays();
             match app.pop_up_mut() {
                 Some(PopUp::EditingPopUp(new)) => {
                     combo_buffer.reset();
@@ -145,6 +146,33 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         }
                     }
                 }
+                Some(app::PopUp::Holidays {
+                    selected,
+                    new_holiday,
+                }) => {
+                    if let Some(new_holiday) = new_holiday {
+                        match key.code {
+                            KeyCode::Char(c) => new_holiday.push(c),
+                            KeyCode::Backspace => {
+                                new_holiday.pop();
+                            }
+                            KeyCode::Enter => {
+                                if let Err(msg) = app.submit_new_holiday() {
+                                    info_popup = Some(Err(msg.into()))
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('k') => *selected = selected.saturating_sub(1),
+                            KeyCode::Char('j') => *selected = (*selected + 1) % n_holidays,
+                            KeyCode::Char('o') => *new_holiday = Some(String::new()),
+                            KeyCode::Char('h') | KeyCode::Esc => app.hide_holidays(),
+                            _ => {}
+                        }
+                    }
+                }
                 None => {
                     match key.code {
                         KeyCode::Char('k') => app.previous(),
@@ -157,6 +185,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> anyhow::Res
                         KeyCode::Char('e') => app.edit_activity(),
                         KeyCode::Char('G') => app.select_last(),
                         KeyCode::Char('f') => app.show_days_off(),
+                        KeyCode::Char('h') => app.show_holidays(),
                         KeyCode::Char('p') => {
                             if let Err(msg) = app.paste() {
                                 info_popup = Some(Err(msg.into()))

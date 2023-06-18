@@ -65,6 +65,7 @@ struct Stats {
     work_days: u16,
     workdays_worked: u32,
     weekend_days_worked: u32,
+    holiday_days_worked: u32,
     days_off: u16,
     work_day_hours: f32,
     time_spent_on_issue: Option<Duration>,
@@ -74,6 +75,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
     let mut month_time = Duration::ZERO;
     let mut workdays_worked = 0;
     let mut weekend_worked_days = 0;
+    let mut holiday_worked_days = 0;
     let selected_id = app.selected_id();
     let items: SelectedVec<_> = app
         .activities()
@@ -81,6 +83,8 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         .flat_map(|(date, acts)| {
             if is_weekend(date) {
                 weekend_worked_days += 1;
+            } else if app.is_free_holiday(date) {
+                holiday_worked_days += 1;
             } else {
                 workdays_worked += 1;
             }
@@ -117,6 +121,8 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
             .style(
                 Style::default()
                     .bg(if is_weekend(date) {
+                        Color::Red
+                    } else if app.is_free_holiday(date) {
                         Color::Yellow
                     } else {
                         Color::Blue
@@ -177,6 +183,7 @@ fn render_table<B: Backend>(frame: &mut Frame<B>, rect: Rect, app: &App) -> Stat
         work_days: app.n_workdays_so_far(),
         workdays_worked,
         weekend_days_worked: weekend_worked_days,
+        holiday_days_worked: holiday_worked_days,
         days_off: app.n_days_off_up_to_today(),
         work_day_hours: app.config.work_day_hours,
         time_spent_on_issue: app.selected_issue_total_time(),
@@ -198,6 +205,13 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App, info_popup: &InfoPopu
         }) => {
             render_table(frame, main, app);
             render_days_off(frame, main, app, *selected, new_day_off);
+        }
+        Some(PopUp::Holidays {
+            selected,
+            new_holiday,
+        }) => {
+            render_table(frame, main, app);
+            render_holidays(frame, main, app, *selected, new_holiday);
         }
         None => {
             let stats_height = app
@@ -273,6 +287,7 @@ fn render_stats<B: Backend>(
         work_days,
         workdays_worked,
         weekend_days_worked,
+        holiday_days_worked,
         days_off,
         work_day_hours,
         time_spent_on_issue,
@@ -322,7 +337,10 @@ fn render_stats<B: Backend>(
         Row::new([
             Spans::from(vec![Span::styled("Total worked days: ", legend_style)]),
             Spans::from(vec![
-                Span::raw(format!("{} (", workdays_worked + weekend_days_worked)),
+                Span::raw(format!(
+                    "{} (",
+                    workdays_worked + weekend_days_worked + holiday_days_worked
+                )),
                 Span::styled(
                     format!("{}", workdays_worked),
                     Style::default().fg(Color::Blue),
@@ -330,6 +348,11 @@ fn render_stats<B: Backend>(
                 Span::raw("/"),
                 Span::styled(
                     format!("{}", weekend_days_worked),
+                    Style::default().fg(Color::Red),
+                ),
+                Span::raw("/"),
+                Span::styled(
+                    format!("{}", holiday_days_worked),
                     Style::default().fg(Color::Yellow),
                 ),
                 Span::raw(")"),
@@ -377,7 +400,7 @@ fn render_info<B: Backend>(frame: &mut Frame<B>, rect: Rect, title: &str, s: &st
     );
 }
 
-mod new_day_off_sizes {
+mod new_date_sizes {
     pub(super) const NUM_WIDGETS: u16 = 1;
     pub(super) const WIDGET_HEIGHT: u16 = 3;
     pub(super) const TOTAL_HEIGHT: u16 = NUM_WIDGETS * WIDGET_HEIGHT;
@@ -390,6 +413,41 @@ fn render_days_off<B: Backend>(
     selected: usize,
     new_day_off: &Option<String>,
 ) {
+    render_datelist(
+        frame,
+        rect,
+        selected,
+        new_day_off,
+        app.days_off(),
+        "days off",
+    );
+}
+
+fn render_holidays<B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    app: &App,
+    selected: usize,
+    new_holiday: &Option<String>,
+) {
+    render_datelist(
+        frame,
+        rect,
+        selected,
+        new_holiday,
+        app.holidays(),
+        "holidays",
+    );
+}
+
+fn render_datelist<'a, B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    selected: usize,
+    new_field: &Option<String>,
+    datelist: impl Iterator<Item = &'a time::Date>,
+    title: &str,
+) {
     let smaller = Rect {
         x: rect.x + 5,
         y: rect.y + 5,
@@ -398,12 +456,12 @@ fn render_days_off<B: Backend>(
     };
     frame.render_widget(Clear, smaller);
     let items = List::new(
-        app.days_off()
+        datelist
             .map(|d| d.format(DATE_FMT_FULL).unwrap())
             .map(ListItem::new)
             .collect::<Vec<_>>(),
     )
-    .block(Block::default().borders(Borders::ALL).title("days off"))
+    .block(Block::default().borders(Borders::ALL).title(title))
     .highlight_style(
         Style::default()
             // .bg(Color::LightGreen)
@@ -418,18 +476,18 @@ fn render_days_off<B: Backend>(
         state
     });
 
-    if let Some(new_day_off) = new_day_off {
-        let bottom = bottom_of_rect(smaller, new_day_off_sizes::TOTAL_HEIGHT);
+    if let Some(new_field) = new_field {
+        let bottom = bottom_of_rect(smaller, new_date_sizes::TOTAL_HEIGHT);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
-                repeat(Constraint::Length(new_day_off_sizes::WIDGET_HEIGHT))
+                repeat(Constraint::Length(new_date_sizes::WIDGET_HEIGHT))
                     .take(new_act_sizes::NUM_WIDGETS.into())
                     .collect::<Vec<_>>(),
             )
             .split(bottom);
         frame.render_widget(Clear, bottom);
-        [Paragraph::new(new_day_off.clone())
+        [Paragraph::new(new_field.clone())
             .style(Style::default().fg(Color::Yellow))
             .block(Block::default().borders(Borders::ALL).title("date"))]
         .into_iter()
