@@ -413,52 +413,14 @@ fn render_days_off<B: Backend>(
     selected: usize,
     new_day_off: &Option<String>,
 ) {
-    let smaller = Rect {
-        x: rect.x + 5,
-        y: rect.y + 5,
-        width: rect.width.saturating_sub(10),
-        height: rect.height.saturating_sub(10),
-    };
-    frame.render_widget(Clear, smaller);
-    let items = List::new(
-        app.days_off()
-            .map(|d| d.format(DATE_FMT_FULL).unwrap())
-            .map(ListItem::new)
-            .collect::<Vec<_>>(),
-    )
-    .block(Block::default().borders(Borders::ALL).title("days off"))
-    .highlight_style(
-        Style::default()
-            // .bg(Color::LightGreen)
-            // .fg(Color::Black)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("> ");
-
-    frame.render_stateful_widget(items, smaller, &mut {
-        let mut state = ListState::default();
-        state.select(Some(selected));
-        state
-    });
-
-    if let Some(new_day_off) = new_day_off {
-        let bottom = bottom_of_rect(smaller, new_date_sizes::TOTAL_HEIGHT);
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                repeat(Constraint::Length(new_date_sizes::WIDGET_HEIGHT))
-                    .take(new_act_sizes::NUM_WIDGETS.into())
-                    .collect::<Vec<_>>(),
-            )
-            .split(bottom);
-        frame.render_widget(Clear, bottom);
-        [Paragraph::new(new_day_off.clone())
-            .style(Style::default().fg(Color::Yellow))
-            .block(Block::default().borders(Borders::ALL).title("date"))]
-        .into_iter()
-        .zip(&chunks)
-        .for_each(|(a, c)| frame.render_widget(a, *c));
-    }
+    render_datelist(
+        frame,
+        rect,
+        selected,
+        new_day_off,
+        app.days_off(),
+        "days off",
+    );
 }
 
 fn render_holidays<B: Backend>(
@@ -468,6 +430,24 @@ fn render_holidays<B: Backend>(
     selected: usize,
     new_holiday: &Option<String>,
 ) {
+    render_datelist(
+        frame,
+        rect,
+        selected,
+        new_holiday,
+        app.holidays(),
+        "holidays",
+    );
+}
+
+fn render_datelist<'a, B: Backend>(
+    frame: &mut Frame<B>,
+    rect: Rect,
+    selected: usize,
+    new_field: &Option<String>,
+    datelist: impl Iterator<Item = &'a time::Date>,
+    title: &str,
+) {
     let smaller = Rect {
         x: rect.x + 5,
         y: rect.y + 5,
@@ -476,12 +456,12 @@ fn render_holidays<B: Backend>(
     };
     frame.render_widget(Clear, smaller);
     let items = List::new(
-        app.holidays()
+        datelist
             .map(|d| d.format(DATE_FMT_FULL).unwrap())
             .map(ListItem::new)
             .collect::<Vec<_>>(),
     )
-    .block(Block::default().borders(Borders::ALL).title("holidays"))
+    .block(Block::default().borders(Borders::ALL).title(title))
     .highlight_style(
         Style::default()
             // .bg(Color::LightGreen)
@@ -496,7 +476,7 @@ fn render_holidays<B: Backend>(
         state
     });
 
-    if let Some(new_holiday) = new_holiday {
+    if let Some(new_field) = new_field {
         let bottom = bottom_of_rect(smaller, new_date_sizes::TOTAL_HEIGHT);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -507,7 +487,7 @@ fn render_holidays<B: Backend>(
             )
             .split(bottom);
         frame.render_widget(Clear, bottom);
-        [Paragraph::new(new_holiday.clone())
+        [Paragraph::new(new_field.clone())
             .style(Style::default().fg(Color::Yellow))
             .block(Block::default().borders(Borders::ALL).title("date"))]
         .into_iter()
