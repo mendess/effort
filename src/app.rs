@@ -380,7 +380,7 @@ impl App {
     }
 
     pub fn n_holidays(&self) -> usize {
-        self.days_off.len()
+        self.holidays.len()
     }
 
     pub fn n_days_off_up_to_today(&self) -> u16 {
